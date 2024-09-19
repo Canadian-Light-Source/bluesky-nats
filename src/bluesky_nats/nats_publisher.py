@@ -1,19 +1,19 @@
-import asyncio  # noqa: INP001
+import asyncio
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from concurrent.futures import Executor
 from dataclasses import asdict
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from bluesky.log import logger
-from ormsgpack import OPT_NAIVE_UTC, OPT_SERIALIZE_NUMPY, packb
-
-from bluesky_nats.nats_client import NATSClientConfig
 from nats.aio.client import Client as NATS  # noqa: N814
 from nats.errors import NoServersError
 from nats.js import JetStreamContext
 from nats.js.errors import NoStreamResponseError
+from ormsgpack import OPT_NAIVE_UTC, OPT_SERIALIZE_NUMPY, packb
+
+from bluesky_nats.nats_client import NATSClientConfig
 
 
 class CoroutineExecutor(Executor):
@@ -47,9 +47,9 @@ class NATSPublisher(Publisher):
     def __init__(
         self,
         executor: Executor,
-        client_config: Optional[NATSClientConfig] = None,
-        stream: Optional[str] = "bluesky",
-        subject_factory: Optional[Callable | str] = "events.volatile",
+        client_config: NATSClientConfig | None = None,
+        stream: str | None = "bluesky",
+        subject_factory: Callable | str | None = "events.volatile",
     ) -> None:
         logger.debug(f"new {__class__} instance created.")
 
@@ -116,7 +116,7 @@ class NATSPublisher(Publisher):
             logger.exception(f"Failed to publish to {subject}: {e!s}")
 
     @staticmethod
-    def validate_subject_factory(subject_factory: Optional[str | Callable]) -> str | Callable:
+    def validate_subject_factory(subject_factory: str | Callable | None) -> str | Callable:
         """Type check the subject factory."""
         if isinstance(subject_factory, str):
             return subject_factory  # String is valid

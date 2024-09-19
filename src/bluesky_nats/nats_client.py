@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 from bluesky.log import logger
-
 from nats.aio.client import (
     DEFAULT_CONNECT_TIMEOUT,
     DEFAULT_DRAIN_TIMEOUT,

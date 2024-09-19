@@ -1,27 +1,30 @@
 import asyncio
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict
-from typing import Optional
+from typing import TYPE_CHECKING, Any
 
 from bluesky.run_engine import Dispatcher
 from event_model import DocumentNames
-from ormsgpack import unpackb
-
-from bluesky_nats.nats_client import NATSClientConfig
 from nats.aio.client import Client as NATS  # noqa: N814
 from nats.errors import TimeoutError
 from nats.js.api import ConsumerConfig, DeliverPolicy
+from ormsgpack import unpackb
+
+from bluesky_nats.nats_client import NATSClientConfig
+
+if TYPE_CHECKING:
+    from nats.js import JetStreamContext
 
 
 class NATSDispatcher(Dispatcher):
     def __init__(
         self,
         subject: str,
-        client_config: Optional[NATSClientConfig] = None,
-        stream_name: Optional[str] = "bluesky",
-        loop: Optional[asyncio.AbstractEventLoop] = None,
-        deserializer: Optional[Callable] = unpackb,
+        client_config: NATSClientConfig | None = None,
+        stream_name: str | None = "bluesky",
+        loop: asyncio.AbstractEventLoop | None = None,
+        deserializer: Callable = unpackb,
     ):
         self._subject = subject
         self._stream_name = stream_name
@@ -36,21 +39,24 @@ class NATSDispatcher(Dispatcher):
         self._deserializer = deserializer
         self.loop = loop or asyncio.get_event_loop()
         self._nc = NATS()
-        self._js = None
-        self._subscription = None
+        self._js: JetStreamContext
+        self._subscription: JetStreamContext.PushSubscription
         self._task = None
         self.closed = False
 
         super().__init__()
 
     async def __aenter__(self):
+        """Async context entry point."""
         await self._setup()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):  # noqa: ANN001
+        """Async context exit point."""
         await self.stop()
 
-    async def _setup(self):
+    async def _setup(self) -> None:
+        """Async context setup."""
         await self.connect()
         await self._subscribe()
         self._task = self.loop.create_task(self._poll())
@@ -77,17 +83,17 @@ class NATSDispatcher(Dispatcher):
                     if name:
                         self.loop.call_soon(self.process, DocumentNames[name], doc)
                     await msg.ack()
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     print(f"Error processing message: {e}")
-            except asyncio.CancelledError:
+            except asyncio.CancelledError:  # noqa: PERF203
                 break
             except TimeoutError:
                 continue
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"Unexpected error: {e!s}")
 
     @asynccontextmanager
-    async def run(self):
+    async def run(self) -> AsyncGenerator[Any, Any]:
         async with self:
             yield self
 
@@ -110,7 +116,9 @@ class NATSDispatcher(Dispatcher):
         finally:
             self.loop.close()
 
-    async def stop(self) -> None:
+    async def stop(self) -> None:  # noqa: C901
+        """Stop the loop and close the connection gracefully."""
+        # TODO(Niko Kivel): This is too complex and also doesn't really work as expected -> refactor  # noqa: TD003
         if self.closed:
             return
 
@@ -120,7 +128,7 @@ class NATSDispatcher(Dispatcher):
                 await asyncio.wait_for(self._task, timeout=5.0)
             except asyncio.TimeoutError:
                 print("Task cancellation timed out")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"Error cancelling task: {e}")
 
         if self._subscription is not None:
@@ -128,7 +136,7 @@ class NATSDispatcher(Dispatcher):
                 await asyncio.wait_for(self._subscription.unsubscribe(), timeout=5.0)
             except asyncio.TimeoutError:
                 print("Unsubscribe operation timed out")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"Error unsubscribing: {e}")
 
         if self._nc is not None and self._nc.is_connected:
@@ -136,7 +144,7 @@ class NATSDispatcher(Dispatcher):
                 await asyncio.wait_for(self._nc.close(), timeout=5.0)
             except asyncio.TimeoutError:
                 print("NATS connection close timed out")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"Error closing NATS connection: {e}")
 
         self.closed = True
@@ -146,7 +154,7 @@ class NATSDispatcher(Dispatcher):
 
 if __name__ == "__main__":
     # Example 1: Using context manager
-    async def async_main():
+    async def async_main() -> None:  # noqa: D103
         async with NATSDispatcher(subject="events.>") as dispatcher:
             # Your code here
             dispatcher.subscribe(print)
