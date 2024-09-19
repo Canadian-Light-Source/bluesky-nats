@@ -1,0 +1,21 @@
+services:
+  nats-server:
+    image: nats:latest
+    container_name: nats
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command:
+      "--jetstream --store_dir /data"
+    networks:
+      - backend
+    volumes:
+      - data:/data
+
+volumes:
+  data:
+
+# make sure the network is created first !!!
+networks:
+  backend:
+    external: true
