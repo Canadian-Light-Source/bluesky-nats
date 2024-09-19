@@ -1,0 +1,99 @@
+= Docker container
+
+A simple Docker container with a NATS JetStream-enabled server is provided by a compose file.
+
+== Prerequisites
+
+=== Docker network
+
+A Docker network named `backend` is required, so that other Docker containers can connect to the NATS server.
+
+Check the existing Docker networks:
+[source,bash]
+----
+docker network ls
+----
+
+In case there is no `backend` available yet, create it with:
+
+[source,bash]
+----
+docker network create backend
+----
+
+== Create a container
+
+Enter the `docker` directory and bring the container up, add the `-d` flag to detach the container:
+[source,bash]
+----
+docker compose up
+----
+
+.output
+[%collapsible]
+====
+[source,bash]
+----
+[+] Running 1/1
+ ✔ Container nats  Created                                                                                                                                      0.1s 
+Attaching to nats
+nats  | [1] 2024/09/19 16:57:00.546060 [INF] Starting nats-server
+nats  | [1] 2024/09/19 16:57:00.546847 [INF]   Version:  2.10.18
+nats  | [1] 2024/09/19 16:57:00.546853 [INF]   Git:      [57d23ac]
+nats  | [1] 2024/09/19 16:57:00.546857 [INF]   Name:     NB7QDSR5FZ5HDSELADJTP4HXZRM5KLRUXEBGZJ3IL2OYMARP2NOBZA2Y
+nats  | [1] 2024/09/19 16:57:00.546870 [INF]   Node:     4NWZANbD
+nats  | [1] 2024/09/19 16:57:00.546874 [INF]   ID:       NB7QDSR5FZ5HDSELADJTP4HXZRM5KLRUXEBGZJ3IL2OYMARP2NOBZA2Y
+nats  | [1] 2024/09/19 16:57:00.547983 [INF] Starting JetStream
+nats  | [1] 2024/09/19 16:57:00.549017 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __
+nats  | [1] 2024/09/19 16:57:00.549034 [INF]  _ | | __|_   _/ __|_   _| _ \ __| /_\ |  \/  |
+nats  | [1] 2024/09/19 16:57:00.549037 [INF] | || | _|  | | \__ \ | | |   / _| / _ \| |\/| |
+nats  | [1] 2024/09/19 16:57:00.549040 [INF]  \__/|___| |_| |___/ |_| |_|_\___/_/ \_\_|  |_|
+nats  | [1] 2024/09/19 16:57:00.549044 [INF] 
+nats  | [1] 2024/09/19 16:57:00.549047 [INF]          https://docs.nats.io/jetstream
+nats  | [1] 2024/09/19 16:57:00.549050 [INF] 
+nats  | [1] 2024/09/19 16:57:00.549075 [INF] ---------------- JETSTREAM ----------------
+nats  | [1] 2024/09/19 16:57:00.549083 [INF]   Max Memory:      5.82 GB
+nats  | [1] 2024/09/19 16:57:00.549087 [INF]   Max Storage:     25.50 GB
+nats  | [1] 2024/09/19 16:57:00.549106 [INF]   Store Directory: "/data/jetstream"
+nats  | [1] 2024/09/19 16:57:00.549112 [INF] -------------------------------------------
+nats  | [1] 2024/09/19 16:57:00.550622 [INF]   Starting restore for stream '$G > bluesky'
+nats  | [1] 2024/09/19 16:57:00.552180 [INF]   Restored 68 messages for stream '$G > bluesky' in 2ms
+nats  | [1] 2024/09/19 16:57:00.553137 [INF] Listening for client connections on 0.0.0.0:4222
+nats  | [1] 2024/09/19 16:57:00.553544 [INF] Server is ready
+----
+====
+
+This will create a new container and expose port numbers 4222 and 8222 for `nats` and `http`, respectively.
+Check the link:{http://localhost:8222}[http server] for basic information about the server.
+
+== Add a JetStream
+In case this is the first time the container is created, or if the volume has been deleted, the will be no JetStream configured in the NATS server.
+
+This command will add a JetStream to the NATS server and subscribe to the subject pattern `events.>`:
+
+[source,bash]
+----
+docker run --network host --rm -it natsio/nats-box:latest nats stream add --subjects="events.>" --defaults bluesky
+----
+
+Check the existence of the JetStream by running:
+
+[source,bash]
+----
+docker run --network host --rm -it natsio/nats-box:latest nats stream report
+----
+
+The response should be:
+
+[source,bash]
+----
+╭──────────────────────────────────────────────────────────────────────────────────────────╮
+│                                       Stream Report                                      │
+├─────────┬─────────┬───────────┬───────────┬──────────┬───────┬──────┬─────────┬──────────┤
+│ Stream  │ Storage │ Placement │ Consumers │ Messages │ Bytes │ Lost │ Deleted │ Replicas │
+├─────────┼─────────┼───────────┼───────────┼──────────┼───────┼──────┼─────────┼──────────┤
+│ bluesky │ File    │           │         0 │ 0        │ 0 B   │ 0    │       0 │          │
+╰─────────┴─────────┴───────────┴───────────┴──────────┴───────┴──────┴─────────┴──────────╯
+----
+
+That should conclude the service setup for development and allow using the examples from the package.

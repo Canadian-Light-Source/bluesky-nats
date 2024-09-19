@@ -1,0 +1,68 @@
+= bluesky-nats
+
+This module allows to:
+
+* publish Bluesky documents to a NATS JetStream
+* consume a NATS JetStream
+
+== Installation
+
+.pypi installation from CLS pypi using `uv`
+[%collapsible%open]
+====
+[source, bash]
+----
+uv add --extra-index-url https://pypi.clsi.ca/simple/ bluesky-nats
+----
+====
+
+.pypi installation from CLS pypi using `pip`
+[%collapsible]
+====
+[source, bash]
+----
+pip install -i https://pypi.clsi.ca/simple/ bluesky-nats
+----
+====
+
+.local installation
+[%collapsible]
+====
+So far, no public module is available.
+
+1. Get the code cloned locally
+2. Run `uv build`
+3. In your project run `uv add -f <path_to_your_dist> bluesky-nats`
+
+In case you don't have `uv`, use the respective `pip` commands, which I don't know, sorry.
+====
+
+== Usage
+
+The module requires a NATS JetStream-enabled server.
+If not explicitly specified, the Publisher will automatically publish to the NATS JetStream "bluesky".
+Make sure that the respective JetStream is available on the server and that your "subject" pattern matches the configuration.
+
+A simple Docker setup for local development and testing is provided in the link:{docker/}[docker] directory, with a link:{docker/Readme.adoc}[Readme.adoc] for guidance.
+
+== Examples
+
+To use the examples, make sure to install the module with the optional dependencies in the `examples` group.
+
+Run `uv sync --extra examples`, then enable the virtual environment with `. .venv/bin/activate`.
+
+The `publisher.py` example will run the most basic Bluesky RunEngine example.
+By invoking `python examples/publisher.py`, the output should look like this:
+
+[source,bash]
+----
+Transient Scan ID: 1     Time: 2024-09-19 10:20:58
+Persistent Unique Scan ID: '0d7b16dd-acab-4fed-8d78-c1ab45114304'
+New stream: 'primary'
++-----------+------------+------------+
+|   seq_num |       time |       det1 |
++-----------+------------+------------+
+|         1 | 10:20:58.1 |      5.000 |
++-----------+------------+------------+
+generator count ['0d7b16dd'] (scan num: 1)
+----
