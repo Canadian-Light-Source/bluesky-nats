@@ -9,11 +9,55 @@ authors = [
 requires-python = ">=3.10"
 dependencies = [
     "bluesky>=1.12.0",
+    "matplotlib[examples]>=3.9.2",
     "nats-py>=2.9.0",
     "ormsgpack>=1.5.0",
-    "ruff>=0.6.5",
+]
+
+[project.optional-dependencies]
+examples = [
+    "matplotlib>=3.9.2",
+    "ophyd>=1.9.0",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "ruff>=0.6.5",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# On top of the defaults (`E4`, E7`, `E9`, and `F`), enable flake8-bugbear (`B`) and flake8-quotes (`Q`).
+#select = ["E4", "E7", "E9", "F", "B", "Q", "N806"]
+#select = ["E", "F", "W", "A", "PLC", "PLE", "PLW", "I"]
+select = ["ALL"]
+
+ignore = [
+    "ANN003", # Missing type annotation for `**kwargs`
+    "ANN101", # allow `self` to be w.o type
+    "ANN102", # allow `cls` to be w/o type
+    "ANN401", # allow `Any`
+    "ANN204", # add return type None to __init__
+    "D100",
+    "D101",
+    "D102",
+    "D107", # allow `__init__` w/o docstring
+    "D203", # empty line above class docstring
+    "D212", # multi line summary first line
+    "D401", # imparative docstring
+    "ERA001", # allow commented code
+    "F541",
+    "FIX", # Line contains TODO, consider resolving the issue
+    "G004", # logging statement uses f-string
+    "PTH118", # `os.path.join()` should be replaced by `Path` with `/` operator
+    "PLR0913", # Too many arguments in function definition (6 > 5)
+    "T201", # allow print
+    "FA", # allow missing  "Missing `from __future__ import annotations`, but uses XXX"
+    # "W503",  # Flake8 considers line-breaks before operators to be best practice, contrary to PEP 8
+]
