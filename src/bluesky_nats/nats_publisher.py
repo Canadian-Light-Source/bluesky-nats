@@ -8,7 +8,6 @@ from uuid import UUID
 
 from bluesky.log import logger
 from nats.aio.client import Client as NATS  # noqa: N814
-from nats.errors import NoServersError
 from nats.js import JetStreamContext
 from nats.js.errors import NoStreamResponseError
 from ormsgpack import OPT_NAIVE_UTC, OPT_SERIALIZE_NUMPY, packb

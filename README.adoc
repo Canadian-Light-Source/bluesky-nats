@@ -78,3 +78,38 @@ New stream: 'primary'
 +-----------+------------+------------+
 generator count ['0d7b16dd'] (scan num: 1)
 ----
+
+=== Config builder
+
+For more advanced configuration of the NATS client, a configuration builder can be used.
+
+The keywords match the NATS `connect` signature, refer to the documentation for details.
+
+.builder example
+[%collapsible%open]
+====
+[source,python]
+----
+import bluesky_nats.callbacks
+from bluesky_nats.nats_client import NATSClientConfig
+
+# this will be OK
+assert NATSClientConfig() == NATSClientConfig.builder().build()
+
+# proper build
+config = (
+    NATSClientConfig.builder()
+    .from_file("examples/config/config.json")   # load default configuration from file from JSON
+    .from_file("examples/config/cluster.yaml")  # overwrite ALL fields from another file, but YAML
+    .from_file("examples/config/cluster.toml")  # overwrite yet again, TOML this timed not that this makes any sense
+    .set("max_reconnect_attempts", value=20)    # this sets a single field manually
+    .set_callback("error_cb", bluesky_nats.callbacks.error_callback)    # register a callback from the module
+    .set_callback("user_jwt_cb", lambda: print("user_jwt_callback"))    # register a callback from a lambda
+    .build()    # put it all together
+)
+----
+====
+
+IMPORTANT: Subsequent calls to `.from_file` will overwrite _all_ fields.
+
+NOTE: The callbacks have to match the expexted type. `error_cb`, `disconnected_cb`, `closed_cb`, `reconnected_cb` and                   `discovered_server_cb` must be coroutines.

@@ -27,4 +27,3 @@ if __name__ == "__main__":
     dets = [det1]   # a list of any number of detectors
 
     RE(count(dets))
-

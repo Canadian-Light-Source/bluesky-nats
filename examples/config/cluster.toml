@@ -1,0 +1,7 @@
+servers = [
+  "nats://c1-n1:4222",
+  "nats://c1-n2:4222",
+  "nats://c1-n3:4222",
+]
+name = "bluesky-nats"
+max_outstanding_pings = 7

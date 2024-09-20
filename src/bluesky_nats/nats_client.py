@@ -21,7 +21,7 @@ from nats.aio.client import (
     SignatureCallback,
 )
 
-from bluesky_nats.filehandler import JSONFileHandler, TOMLFileHandler, YAMLFileHandler
+from bluesky_nats.filehandler import FileHandler, JSONFileHandler, TOMLFileHandler, YAMLFileHandler
 
 CALLBACK_SUFFIX = "_cb"
 
@@ -115,23 +115,7 @@ class NATSClientConfigBuilder:
 
     @classmethod
     def from_file(cls, file_path: str | Path) -> "NATSClientConfigBuilder":
-        file_path = Path(file_path)
-        if not file_path.exists():
-            msg = f"Configuration file not found: {file_path}"
-            raise FileNotFoundError(msg)
-
-        # Determine the appropriate handler based on file extension
-        if file_path.suffix == ".json":
-            handler = JSONFileHandler(file_path)
-        elif file_path.suffix in [".yaml", ".yml"]:
-            handler = YAMLFileHandler(file_path)
-        elif file_path.suffix == ".toml":
-            handler = TOMLFileHandler(file_path)
-        else:
-            msg = f"Unsupported file format: {file_path.suffix}"
-            raise ValueError(msg)
-
-        config_data = handler.load_data()
+        config_data = cls.get_file_handler(file_path=file_path).load_data()
 
         builder = cls()
         try:
@@ -142,6 +126,22 @@ class NATSClientConfigBuilder:
             raise RuntimeError from e
 
         return builder
+
+    @staticmethod
+    def get_file_handler(file_path: str | Path) -> FileHandler:
+        """Return a FileHandler based on the given file extension."""
+        file_path = Path(file_path)
+        if not file_path.exists():
+            msg = f"Configuration file not found: {file_path}"
+            raise FileNotFoundError(msg)
+        if file_path.suffix == ".json":
+            return JSONFileHandler(file_path)
+        if file_path.suffix in [".yaml", ".yml"]:
+            return YAMLFileHandler(file_path)
+        if file_path.suffix == ".toml":
+            return TOMLFileHandler(file_path)
+        msg = f"Unsupported file format: {file_path.suffix}"
+        raise ValueError(msg)
 
     def build(self) -> NATSClientConfig:
         return NATSClientConfig(**self._config)
