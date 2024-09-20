@@ -62,7 +62,13 @@ class NATSPublisher(Publisher):
         self._subject_factory = self.validate_subject_factory(subject_factory)
 
         # establish a connection to the server
-        self.executor.submit(self._connect, self._client_config)
+        future = self.executor.submit(self._connect, self._client_config)
+        try:
+            _ = future.result()
+        except Exception as e:
+            msg = f"{e!s}"
+            raise ConnectionError(msg) from e
+
         # create the NATS JetStream context
         # NOTE: The JetStream context requires the feature to be enabled on the server
         #       and at least one stream needs to be existing
@@ -70,6 +76,7 @@ class NATSPublisher(Publisher):
         self.js = self.nats_client.jetstream()
 
         self._run_id: UUID
+
 
     def __call__(self, name: str, doc: dict):
         """Make instances of this Publisher callable."""
@@ -91,11 +98,7 @@ class NATSPublisher(Publisher):
             raise RuntimeError(msg)
 
     async def _connect(self, config: NATSClientConfig) -> None:
-        try:
-            await self.nats_client.connect(**asdict(config))
-        except NoServersError as e:
-            logger.exception(f"Failed to connect to NATS server {e!s}")
-            raise
+        await self.nats_client.connect(**asdict(config))
 
     @property
     def run_id(self) -> UUID:
