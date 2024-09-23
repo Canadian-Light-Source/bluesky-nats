@@ -92,7 +92,7 @@ class NATSClientConfigBuilder:
 
     def set(self, key: str, value: Any) -> "NATSClientConfigBuilder":
         if key.endswith(CALLBACK_SUFFIX):
-            msg = f"Cannot set callback `{key}` via `set()` method , use the `set_callback()` method instead."
+            msg = f"Cannot set callback '{key}' via 'set()' method, use the 'set_callback()' method instead."
             raise ValueError(msg)
         if key not in self._config:
             msg = f"Configuration key `{key}` not found"
