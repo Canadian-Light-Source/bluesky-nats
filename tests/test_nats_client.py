@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
@@ -85,13 +85,38 @@ class TestNATSClientConfig(unittest.TestCase):
         with pytest.raises(ValueError):  # noqa: PT011
             NATSClientConfigBuilder.from_file("invalid_format.xyz")
 
-    def test_get_file_handler(self) -> None:
-        assert isinstance(NATSClientConfigBuilder.get_file_handler("./tests/config/config.json"), JSONFileHandler)
-        assert isinstance(NATSClientConfigBuilder.get_file_handler("./tests/config/config.yaml"), YAMLFileHandler)
-        assert isinstance(NATSClientConfigBuilder.get_file_handler("./tests/config/config.toml"), TOMLFileHandler)
+    @patch("pathlib.Path.exists")
+    @patch("pathlib.Path.open", new_callable=mock_open, read_data="{}")
+    def test_get_file_handler(self, mock_file, mock_exists) -> None:
+        # Simulate file existence for the different supported formats
+        mock_exists.side_effect = lambda: True
 
+        # Test JSON handler
+        assert isinstance(
+            NATSClientConfigBuilder.get_file_handler("config.json"),
+            JSONFileHandler,
+        )
+
+        # Test YAML handler
+        assert isinstance(
+            NATSClientConfigBuilder.get_file_handler("config.yaml"),
+            YAMLFileHandler,
+        )
+
+        # Test TOML handler
+        assert isinstance(
+            NATSClientConfigBuilder.get_file_handler("config.toml"),
+            TOMLFileHandler,
+        )
+
+        # Ensure that the file open method was not called
+        mock_file.assert_not_called()
+
+        # Simulate non-existent file for the ValueError case
         with pytest.raises(ValueError, match="Unsupported file format: .txt"):
-            NATSClientConfigBuilder.get_file_handler("./tests/config/config.txt")
+            NATSClientConfigBuilder.get_file_handler("config.txt")
 
+        # Simulate non-existent file for FileNotFoundError
+        mock_exists.side_effect = lambda: False
         with pytest.raises(FileNotFoundError):
             NATSClientConfigBuilder.get_file_handler("non_existent_file.toml")
