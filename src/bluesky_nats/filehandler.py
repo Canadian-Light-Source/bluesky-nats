@@ -27,7 +27,7 @@ class YAMLFileHandler(FileHandler):
                 return yaml.safe_load(f)
         except ImportError as error:
             msg = "YAML configuration requires 'pyyaml' library. Please install it."
-            raise RuntimeError(msg) from error
+            raise ImportError(msg) from error
 
 
 class TOMLFileHandler(FileHandler):
@@ -38,4 +38,4 @@ class TOMLFileHandler(FileHandler):
             return toml.load(self.file_path)
         except ImportError as error:
             msg = "TOML configuration requires 'pytoml' library. Please install it."
-            raise RuntimeError(msg) from error
+            raise ImportError(msg) from error
