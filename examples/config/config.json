@@ -24,7 +24,7 @@
   "user_credentials": null,
   "nkeys_seed": null,
   "nkeys_seed_str": null,
-  "inbox_prefix": "b'_INBOX'",
+  "inbox_prefix": "_INBOX",
   "pending_size": 2097152,
   "flush_timeout": null
 }

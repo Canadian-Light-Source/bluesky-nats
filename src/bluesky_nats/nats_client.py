@@ -51,7 +51,7 @@ class NATSClientConfig:
     user_credentials: Any | None = None
     nkeys_seed: str | None = None
     nkeys_seed_str: str | None = None
-    inbox_prefix: str | bytes = DEFAULT_INBOX_PREFIX
+    inbox_prefix: str | bytes = "_INBOX"
     pending_size: int = DEFAULT_PENDING_SIZE
     flush_timeout: float | None = None
     error_cb: ErrorCallback | None = None

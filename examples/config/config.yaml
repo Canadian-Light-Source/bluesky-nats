@@ -23,6 +23,6 @@ drain_timeout: 30
 user_credentials: 
 nkeys_seed: 
 nkeys_seed_str: 
-inbox_prefix: b'_INBOX'
+inbox_prefix: "_INBOX"
 pending_size: 2097152
 flush_timeout: 
