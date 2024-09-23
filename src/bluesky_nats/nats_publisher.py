@@ -20,6 +20,9 @@ class CoroutineExecutor(Executor):
         self.loop = loop
 
     def submit(self, fn: Callable, *args, **kwargs) -> Any:  # noqa: ANN002
+        if not callable(fn):
+            msg = f"Expected callable, got {type(fn).__name__}"
+            raise TypeError(msg)
         if asyncio.iscoroutinefunction(fn):
             return asyncio.run_coroutine_threadsafe(fn(*args, **kwargs), self.loop)
         return self.loop.run_in_executor(None, fn, *args, **kwargs)
