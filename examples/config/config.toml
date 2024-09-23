@@ -1,9 +1,6 @@
 servers = [
   "nats://localhost:4222",
-  "nats://localhost:4223",
-  "nats://localhost:4224"
 ]
-name = "None"
 pedantic = false
 verbose = false
 allow_reconnect = true
@@ -15,16 +12,7 @@ max_outstanding_pings = 2
 dont_randomize = false
 flusher_queue_size = 1_024
 no_echo = false
-tls = "None"
-tls_hostname = "None"
 tls_handshake_first = false
-user = "None"
-password = "None"
-token = "None"
 drain_timeout = 30
-user_credentials = "None"
-nkeys_seed = "None"
-nkeys_seed_str = "None"
 inbox_prefix = "b'_INBOX'"
 pending_size = 2_097_152
-flush_timeout = "None"

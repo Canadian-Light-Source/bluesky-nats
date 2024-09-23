@@ -1,10 +1,8 @@
 {
   "servers": [
-    "nats://localhost:4222",
-    "nats://localhost:4223",
-    "nats://localhost:4224"
+    "nats://localhost:4222"
   ],
-  "name": "None",
+  "name": null,
   "pedantic": false,
   "verbose": false,
   "allow_reconnect": true,
@@ -16,17 +14,17 @@
   "dont_randomize": false,
   "flusher_queue_size": 1024,
   "no_echo": false,
-  "tls": "None",
-  "tls_hostname": "None",
+  "tls": null,
+  "tls_hostname": null,
   "tls_handshake_first": false,
-  "user": "None",
-  "password": "None",
-  "token": "None",
+  "user": null,
+  "password": null,
+  "token": null,
   "drain_timeout": 30,
-  "user_credentials": "None",
-  "nkeys_seed": "None",
-  "nkeys_seed_str": "None",
+  "user_credentials": null,
+  "nkeys_seed": null,
+  "nkeys_seed_str": null,
   "inbox_prefix": "b'_INBOX'",
   "pending_size": 2097152,
-  "flush_timeout": "None"
+  "flush_timeout": null
 }
