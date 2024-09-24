@@ -20,6 +20,7 @@ def json_mock_file(mocker: MockerFixture):
 
 
 def test_load_data_json(json_mock_file):
+    """Test loading JSON file."""
     print(f"====> mocker type: {type(json_mock_file)}")
     handler = JSONFileHandler(Path("test.json"))
     data = handler.load_data()
@@ -34,6 +35,7 @@ def yaml_mock_file(mocker: MockerFixture):
 
 
 def test_load_data_yaml(yaml_mock_file, mocker: MockerFixture):
+    """Test loading YAML file."""
     mock_yaml_load = mocker.patch("yaml.safe_load")
     mock_yaml_load.return_value = {"key": "value"}
 
@@ -46,6 +48,7 @@ def test_load_data_yaml(yaml_mock_file, mocker: MockerFixture):
 
 
 def test_yaml_import_error(yaml_mock_file, mocker: MockerFixture):
+    """Test ImportError for missing pyyaml module."""
     mock_yaml_load = mocker.patch("yaml.safe_load")
     mock_yaml_load.side_effect = ImportError
 
@@ -58,6 +61,7 @@ def test_yaml_import_error(yaml_mock_file, mocker: MockerFixture):
 
 
 def test_load_data_toml(mocker: MockerFixture):
+    """Test loading TOML file."""
     mock_toml_load = mocker.patch("toml.load")
     mock_toml_load.return_value = {"key": "value"}
 
@@ -69,6 +73,7 @@ def test_load_data_toml(mocker: MockerFixture):
 
 
 def test_toml_import_error(mocker: MockerFixture):
+    """Test ImportError for missing pytoml module."""
     mock_toml_load = mocker.patch("toml.load")
     mock_toml_load.side_effect = ImportError
 
