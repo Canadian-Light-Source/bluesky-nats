@@ -25,9 +25,10 @@ build-backend = "hatchling.build"
 [tool.uv]
 dev-dependencies = [
     "pytest-asyncio>=0.24.0",
+    "pytest-mock>=3.14.0",
     "pytest>=8.3.3",
     "pyyaml>=6.0.2",
-    "ruff>=0.6.6",
+    "ruff>=0.6.7",
     "toml>=0.10.2",
 ]
 
@@ -68,6 +69,7 @@ ignore = [
 "tests/**/*.py" = [
     # at least this three should be fine in tests:
     "S101", # asserts allowed in tests...
+    "ANN", # allow missing type annotation
     # "ARG", # Unused function args -> fixtures nevertheless are functionally relevant...
     # "FBT", # Don't care about booleans as positional arguments in tests, e.g. via @pytest.mark.parametrize()
     # # The below are debateable
