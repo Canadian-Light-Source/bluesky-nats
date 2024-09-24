@@ -129,9 +129,8 @@ def mock_file(mocker):
     )
 
 
-def test_get_file_handler(mock_path_exists, mock_file) -> None:
-    # Simulate file existence for the different supported formats
-
+def test_builder_get_file_handler(mock_path_exists, mock_file) -> None:
+    """Test builder_get_file_handler."""
     # Test JSON handler
     assert isinstance(
         NATSClientConfigBuilder.get_file_handler("config.json"),
