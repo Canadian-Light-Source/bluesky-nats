@@ -2,6 +2,8 @@ from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
+from hypothesis import given
+from hypothesis.strategies import text
 from nats.js import JetStreamContext
 from ormsgpack import OPT_NAIVE_UTC, OPT_SERIALIZE_NUMPY, packb
 
@@ -12,6 +14,7 @@ from bluesky_nats.nats_publisher import NATSClientConfig, NATSPublisher
 def mock_executor():
     """Fixture to mock the executor's submit method."""
     return Mock()
+
 
 def test_init_publisher(mock_executor):
     """Test the default NATSPublisher constructor."""
@@ -62,19 +65,25 @@ def test_update_run_id(publisher) -> None:
         publisher.update_run_id("stop", {"run_start": uuid4()})
 
 
-def test_validate_subject_factory() -> None:
-    """Test the subject factory validator."""
-    assert NATSPublisher.validate_subject_factory("test") == "test"
-    assert callable(NATSPublisher.validate_subject_factory(lambda: "test"))
+@given(text())
+def test_validate_subject_factory_sucess(test_str: str) -> None:
+    """Test the subject factory validator with strings."""
+    assert NATSPublisher.validate_subject_factory(test_str) == test_str
+    assert callable(NATSPublisher.validate_subject_factory(lambda: test_str))
 
+
+def test_validate_subject_factory_exceptions() -> None:
+    """Test the subject factory validator."""
+    # fail on a non-string argument
+    with pytest.raises(TypeError, match="subject_factory must be a string or a callable"):
+        NATSPublisher.validate_subject_factory(42)  # type: ignore  # noqa: PGH003
+    # fail on a callable returning non-string
     with pytest.raises(TypeError, match="Callable must return a string"):
         NATSPublisher.validate_subject_factory(lambda: 42)
 
-    with pytest.raises(TypeError, match="subject_factory must be a string or a callable"):
-        NATSPublisher.validate_subject_factory(42)  # type: ignore  # noqa: PGH003
-
 
 def test_call(publisher, mock_executor):
+    """Test the __call__ method of NATSPublisher."""
     publisher.run_id = uuid4()
 
     document_name = "event"
@@ -84,5 +93,8 @@ def test_call(publisher, mock_executor):
     packed_payload = packb(doc, option=OPT_NAIVE_UTC | OPT_SERIALIZE_NUMPY)
     headers = {"run_id": publisher.run_id}
     mock_executor.submit.assert_called_with(
-        publisher.publish, subject="test.subject.event", payload=packed_payload, headers=headers,
+        publisher.publish,
+        subject="test.subject.event",
+        payload=packed_payload,
+        headers=headers,
     )
