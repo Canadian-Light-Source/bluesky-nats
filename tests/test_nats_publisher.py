@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
@@ -16,6 +17,9 @@ def mock_executor():
     return Mock()
 
 
+"""Test the construction of the NATSPublisher."""
+
+
 def test_init_publisher(mock_executor):
     """Test the default NATSPublisher constructor."""
     try:
@@ -29,6 +33,18 @@ def test_init_publisher(mock_executor):
     except AssertionError as error:
         # bail out right now because there is something _VERY_ wrong here.
         pytest.fail(f"{error!s}")
+
+
+def test_init_connection_error(mocker):
+    """Test the NATSPublisher constructor when a connection error occurs."""
+    mock_executor = mocker.patch("bluesky_nats.nats_publisher.Executor")
+    mock_executor.submit.return_value.result.side_effect = ConnectionError("Connection error")
+
+    with pytest.raises(ConnectionError, match="Connection error"):
+        NATSPublisher(mock_executor)
+
+
+"""Create a NATSPublisher fixture for later use."""
 
 
 @pytest.fixture(scope="session")
@@ -46,6 +62,16 @@ def publisher(mock_executor):
 
 
 @pytest.mark.asyncio
+async def test_connect(mocker, publisher):
+    """Test the _connect method of NATSPublisher."""
+    mock_connect = mocker.patch("nats.aio.client.Client.connect", return_value=None)
+    config = NATSClientConfig()
+    await publisher._connect(config)
+
+    mock_connect.assert_called_once_with(**asdict(config))
+
+
+@pytest.mark.asyncio
 async def test_publish(publisher):
     """Test the publish method of NATSPublisher."""
     # Act: Call the publish method
@@ -53,6 +79,30 @@ async def test_publish(publisher):
 
     # Assert
     publisher.js.publish.assert_called_once_with(subject="test.subject", payload=b"test", headers={})
+
+
+@pytest.mark.asyncio
+async def test_publish_no_stream_response_error(mocker, publisher):
+    """Test the publish method of NATSPublisher when NoStreamResponseError is raised."""
+    from nats.js.errors import NoStreamResponseError
+
+    mock_js = mocker.patch.object(publisher, "js")
+    mock_js.publish.side_effect = NoStreamResponseError("No streams available")
+
+    await publisher.publish("subject", b"payload", {})
+
+    mock_js.publish.assert_called_once_with(subject="subject", payload=b"payload", headers={})
+
+
+@pytest.mark.asyncio
+async def test_publish_exception(mocker, publisher):
+    """Test the publish method of NATSPublisher when generic exception is raised."""
+    mock_js = mocker.patch.object(publisher, "js")
+    mock_js.publish.side_effect = Exception("generic exception")
+
+    await publisher.publish("subject", b"payload", {})
+
+    mock_js.publish.assert_called_once_with(subject="subject", payload=b"payload", headers={})
 
 
 @given(uuid=uuids(version=4))
