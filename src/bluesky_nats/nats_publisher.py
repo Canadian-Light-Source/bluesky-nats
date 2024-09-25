@@ -83,7 +83,7 @@ class NATSPublisher(Publisher):
         """Make instances of this Publisher callable."""
         subject = self._subject_factory(name) if callable(self._subject_factory) else f"{self._subject_factory}.{name}"
         self.update_run_id(name, doc)
-        # TODO: maybe worthwhile refacotring to a header factory for higher flexibility.
+        # TODO: maybe worthwhile refacotring to a header factory for higher flexibility.  # noqa: TD002, TD003
         headers = {"run_id": self.run_id}
 
         payload = packb(doc, option=OPT_NAIVE_UTC | OPT_SERIALIZE_NUMPY)

@@ -13,6 +13,7 @@ def executor(event_loop):
 
 @pytest.mark.asyncio
 async def test_submit_coroutine_function(executor):
+    """Test the submit method with a coroutine function."""
     async def coro_func(x, y):
         await asyncio.sleep(0.1)
         return x + y
@@ -24,6 +25,7 @@ async def test_submit_coroutine_function(executor):
 
 @pytest.mark.asyncio
 async def test_submit_non_coroutine_function(executor):
+    """Test the submit method with a regular function."""
     def regular_func(x, y):
         return x * y
 
@@ -34,5 +36,6 @@ async def test_submit_non_coroutine_function(executor):
 
 @pytest.mark.asyncio
 async def test_submit_non_callable(executor):
+    """Test the submit method with a non-callable object."""
     with pytest.raises(TypeError, match="Expected callable"):
         executor.submit(123)

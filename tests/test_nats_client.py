@@ -118,6 +118,7 @@ def test_builder_from_file_success(mocker, mock_path_exists, mock_json_config_fi
 
 
 def test_builder_from_file_exception(mocker, mock_path_exists):
+    """Test builder from file with file not found exception."""
     mock_file_handler = mocker.Mock()
     mock_file_handler.load_data.side_effect = FileNotFoundError
     with pytest.raises(FileNotFoundError):
@@ -129,6 +130,7 @@ def test_builder_from_file_exception(mocker, mock_path_exists):
 
 
 def test_from_file_invalid_key(mocker):
+    """Test from_file with invalid key."""
     mocker.patch(
         "bluesky_nats.nats_client.NATSClientConfigBuilder.get_file_handler",
         return_value=mocker.Mock(load_data=lambda: {"invalid_key": "invalid_value"}),
