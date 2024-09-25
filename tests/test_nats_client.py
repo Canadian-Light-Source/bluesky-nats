@@ -17,7 +17,7 @@ def test_init_config_with_valid_callbacks():
     """Initialize with a valid callback."""
 
     def mock_callback():
-        pass
+        """Mock callback."""
 
     config = NATSClientConfig(error_cb=mock_callback)  # type: ignore  # noqa: PGH003
     assert isinstance(config, NATSClientConfig)
@@ -74,7 +74,7 @@ def test_builder_set_callback_method() -> None:
     """Test builder set_callback method."""
 
     def mock_callback() -> None:
-        pass
+        """Mock callback."""
 
     builder = NATSClientConfigBuilder()
     builder.set_callback("error_cb", mock_callback)
