@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import given
 from hypothesis.strategies import text, uuids
 from nats.js import JetStreamContext
 from ormsgpack import OPT_NAIVE_UTC, OPT_SERIALIZE_NUMPY, packb
