@@ -1,5 +1,6 @@
 # from unittest.mock import MagicMock, mock_open, patch
 
+
 import pytest
 
 from bluesky_nats.filehandler import JSONFileHandler, TOMLFileHandler, YAMLFileHandler
@@ -29,6 +30,12 @@ def test_init_config_with_invalid_callbacks():
 
     with pytest.raises(TypeError):
         NATSClientConfig(disconnected_cb="not callable")  # type: ignore  # noqa: PGH003
+
+
+def test_init_config_builder() -> None:
+    """Most basic initialization."""
+    builder = NATSClientConfig().builder()
+    assert isinstance(builder, NATSClientConfigBuilder)
 
 
 def test_init_builder() -> None:
@@ -92,7 +99,7 @@ def mock_path_exists(mocker):
 
 @pytest.fixture
 def mock_json_config_file(mocker):
-    """Mock TOML file."""
+    """Mock JSON file."""
     return mocker.patch(
         "pathlib.Path.open",
         new_callable=mocker.mock_open,
@@ -100,7 +107,7 @@ def mock_json_config_file(mocker):
     )
 
 
-def test_builder_from_file(mocker, mock_path_exists, mock_json_config_file):
+def test_builder_from_file_success(mocker, mock_path_exists, mock_json_config_file):
     """Test builder from file."""
     builder = NATSClientConfigBuilder.from_file("config.json")
     config = builder.build()
@@ -109,6 +116,8 @@ def test_builder_from_file(mocker, mock_path_exists, mock_json_config_file):
     mock_json_config_file.assert_called_once()
     mock_path_exists.assert_called_once()
 
+
+def test_builder_from_file_exception(mocker, mock_path_exists):
     mock_file_handler = mocker.Mock()
     mock_file_handler.load_data.side_effect = FileNotFoundError
     with pytest.raises(FileNotFoundError):
@@ -117,6 +126,16 @@ def test_builder_from_file(mocker, mock_path_exists, mock_json_config_file):
     mock_file_handler.load_data.side_effect = ValueError
     with pytest.raises(ValueError, match="Unsupported file format:"):
         NATSClientConfigBuilder.from_file("invalid_format.xyz")
+
+
+def test_from_file_invalid_key(mocker):
+    mocker.patch(
+        "bluesky_nats.nats_client.NATSClientConfigBuilder.get_file_handler",
+        return_value=mocker.Mock(load_data=lambda: {"invalid_key": "invalid_value"}),
+    )
+
+    with pytest.raises(RuntimeError):
+        NATSClientConfigBuilder.from_file("valid_file.yml")
 
 
 @pytest.fixture
