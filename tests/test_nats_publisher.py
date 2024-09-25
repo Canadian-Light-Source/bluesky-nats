@@ -66,7 +66,7 @@ async def test_connect(mocker, publisher):
     """Test the _connect method of NATSPublisher."""
     mock_connect = mocker.patch("nats.aio.client.Client.connect", return_value=None)
     config = NATSClientConfig()
-    await publisher._connect(config)
+    await publisher._connect(config)  # noqa: SLF001
 
     mock_connect.assert_called_once_with(**asdict(config))
 
