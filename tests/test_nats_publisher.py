@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
-from hypothesis import given
-from hypothesis.strategies import text
+from hypothesis import HealthCheck, given, settings
+from hypothesis.strategies import text, uuids
 from nats.js import JetStreamContext
 from ormsgpack import OPT_NAIVE_UTC, OPT_SERIALIZE_NUMPY, packb
 
@@ -23,7 +23,7 @@ def test_init_publisher(mock_executor):
             executor=mock_executor,
         )
         # assert the _connect method was called with the correct arguments
-        mock_executor.submit.assert_called_once_with(publisher._connect, publisher._client_config)
+        mock_executor.submit.assert_called_once_with(publisher._connect, publisher._client_config)  # noqa: SLF001
         # assert the NATS JetStream context is created
         assert isinstance(publisher.js, JetStreamContext)
     except AssertionError as error:
@@ -55,14 +55,25 @@ async def test_publish(publisher):
     publisher.js.publish.assert_called_once_with(subject="test.subject", payload=b"test", headers={})
 
 
-def test_update_run_id(publisher) -> None:
+@given(uuid=uuids(version=4))
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_update_run_id_success(uuid, publisher) -> None:
     """Test the update_run_id method of NATSPublisher."""
-    uuid = uuid4()
     publisher.update_run_id("start", {"uid": uuid})
     assert publisher.run_id == uuid
 
+
+def test_update_run_id_success_exception(publisher) -> None:
+    """Test the update_run_id method of NATSPublisher with exception."""
+    # fail on mismatch
     with pytest.raises(ValueError, match="Publisher: UUID for start and stop must be identical"):
         publisher.update_run_id("stop", {"run_start": uuid4()})
+    # fail on missing uid in start document
+    with pytest.raises(KeyError, match="uid"):
+        publisher.update_run_id("start", {})
+    # fail on missing run_start in stop document
+    with pytest.raises(KeyError, match="run_start"):
+        publisher.update_run_id("stop", {})
 
 
 @given(text())
@@ -84,17 +95,23 @@ def test_validate_subject_factory_exceptions() -> None:
 
 def test_call(publisher, mock_executor):
     """Test the __call__ method of NATSPublisher."""
-    publisher.run_id = uuid4()
+    run_id = uuid4()
 
-    document_name = "event"
-    doc = {"data": "test"}
+    # publish a dummy start document
+    document_name = "start"
+    doc = {"uid": run_id}
     publisher(document_name, doc)
 
+    # assert the run_id is set from the "start" document
+    assert publisher.run_id == run_id
+
+    # assert the executor is called with all the right arguments
     packed_payload = packb(doc, option=OPT_NAIVE_UTC | OPT_SERIALIZE_NUMPY)
-    headers = {"run_id": publisher.run_id}
+    # static header for now. This might change, keep an eye on a potential factory
+    headers = {"run_id": run_id}
     mock_executor.submit.assert_called_with(
         publisher.publish,
-        subject="test.subject.event",
+        subject="test.subject.start",
         payload=packed_payload,
         headers=headers,
     )
