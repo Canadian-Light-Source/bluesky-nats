@@ -10,7 +10,7 @@ from ormsgpack import OPT_NAIVE_UTC, OPT_SERIALIZE_NUMPY, packb
 from bluesky_nats.nats_publisher import NATSClientConfig, NATSPublisher
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mock_executor():
     """Fixture to mock the executor's submit method."""
     return Mock()
@@ -31,7 +31,7 @@ def test_init_publisher(mock_executor):
         pytest.fail(f"{error!s}")
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def publisher(mock_executor):
     """Fixture to initialize NATSPublisher with mocks."""
     publisher = NATSPublisher(
@@ -56,7 +56,6 @@ async def test_publish(publisher):
 
 
 @given(uuid=uuids(version=4))
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_update_run_id_success(uuid, publisher) -> None:
     """Test the update_run_id method of NATSPublisher."""
     publisher.update_run_id("start", {"uid": uuid})
