@@ -20,6 +20,9 @@ class CoroutineExecutor(Executor):
         self.loop = loop
 
     def submit(self, fn: Callable, *args, **kwargs) -> Any:  # noqa: ANN002
+        if not callable(fn):
+            msg = f"Expected callable, got {type(fn).__name__}"
+            raise TypeError(msg)
         if asyncio.iscoroutinefunction(fn):
             return asyncio.run_coroutine_threadsafe(fn(*args, **kwargs), self.loop)
         return self.loop.run_in_executor(None, fn, *args, **kwargs)
@@ -76,12 +79,12 @@ class NATSPublisher(Publisher):
 
         self._run_id: UUID
 
-
     def __call__(self, name: str, doc: dict):
         """Make instances of this Publisher callable."""
         subject = self._subject_factory(name) if callable(self._subject_factory) else f"{self._subject_factory}.{name}"
         self.update_run_id(name, doc)
-        headers = {"run_id": self._run_id}
+        # TODO: maybe worthwhile refacotring to a header factory for higher flexibility.
+        headers = {"run_id": self.run_id}
 
         payload = packb(doc, option=OPT_NAIVE_UTC | OPT_SERIALIZE_NUMPY)
         self.executor.submit(self.publish, subject=subject, payload=payload, headers=headers)
@@ -89,12 +92,9 @@ class NATSPublisher(Publisher):
     def update_run_id(self, name: str, doc: dict) -> None:
         if name == "start":
             self.run_id = doc["uid"]
-        elif name == "stop" and doc["run_start"] != self.run_id:
+        if name == "stop" and doc["run_start"] != self.run_id:
             msg = "Publisher: UUID for start and stop must be identical"
             raise ValueError(msg)
-        if self.run_id is None:
-            msg = "Publisher: Run ID must be set after receiving the start document"
-            raise RuntimeError(msg)
 
     async def _connect(self, config: NATSClientConfig) -> None:
         await self.nats_client.connect(**asdict(config))

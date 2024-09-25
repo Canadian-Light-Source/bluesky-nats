@@ -26,7 +26,12 @@ build-backend = "hatchling.build"
 dev-dependencies = [
     "pytest-mock>=3.14.0",
     "pytest>=8.3.3",
+    "hypothesis>=6.112.1",
+    "pytest-asyncio>=0.24.0",
+    "pytest-mock>=3.14.0",
+    "pytest>=8.3.3",
     "pyyaml>=6.0.2",
+    "ruff>=0.6.7",
     "ruff>=0.6.7",
     "toml>=0.10.2",
 ]
