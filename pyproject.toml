@@ -1,6 +1,6 @@
 [project]
 name = "bluesky-nats"
-version = "0.1.1"
+version = "0.1.2"
 description = "NATS JetStream connectivity for Bluesky"
 authors = [
     {name = "Niko Kivel", email = "niko.kivel@lightsource.ca"},
