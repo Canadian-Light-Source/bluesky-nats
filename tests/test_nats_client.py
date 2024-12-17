@@ -45,7 +45,7 @@ def test_init_builder() -> None:
 
 
 def test_builder_build() -> None:
-    """Build defaul configuration."""
+    """Build default configuration."""
     builder_config = NATSClientConfigBuilder().build()
     assert isinstance(builder_config, NATSClientConfig)
 
