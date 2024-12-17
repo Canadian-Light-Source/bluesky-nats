@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from bluesky.run_engine import Dispatcher
 from event_model import DocumentNames
 from nats.aio.client import Client as NATS  # noqa: N814
-from nats.errors import TimeoutError
+from nats.errors import TimeoutError as NATS_TimeoutError
 from nats.js.api import ConsumerConfig, DeliverPolicy
 from ormsgpack import unpackb
 
@@ -87,7 +87,7 @@ class NATSDispatcher(Dispatcher):
                     print(f"Error processing message: {e}")
             except asyncio.CancelledError:  # noqa: PERF203
                 break
-            except TimeoutError:
+            except NATS_TimeoutError:
                 continue
             except Exception as e:  # noqa: BLE001
                 print(f"Unexpected error: {e!s}")

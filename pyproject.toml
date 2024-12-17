@@ -31,7 +31,7 @@ dev-dependencies = [
     "pytest-mock>=3.14.0",
     "pytest>=8.3.3",
     "pyyaml>=6.0.2",
-    "ruff>=0.6.8",
+    "ruff>=0.8.3",
     "toml>=0.10.2",
     "coverage>=7.6.1",
 ]
@@ -40,15 +40,10 @@ dev-dependencies = [
 line-length = 120
 
 [tool.ruff.lint]
-# On top of the defaults (`E4`, E7`, `E9`, and `F`), enable flake8-bugbear (`B`) and flake8-quotes (`Q`).
-#select = ["E4", "E7", "E9", "F", "B", "Q", "N806"]
-#select = ["E", "F", "W", "A", "PLC", "PLE", "PLW", "I"]
 select = ["ALL"]
 
 ignore = [
     "ANN003", # Missing type annotation for `**kwargs`
-    "ANN101", # allow `self` to be w.o type
-    "ANN102", # allow `cls` to be w/o type
     "ANN401", # allow `Any`
     "ANN204", # add return type None to __init__
     "D100",
