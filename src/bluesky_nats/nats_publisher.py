@@ -79,7 +79,7 @@ class NATSPublisher(Publisher):
 
         self._run_id: UUID
 
-    def __call__(self, name: str, doc: dict):
+    def __call__(self, name: str, doc: dict) -> None:
         """Make instances of this Publisher callable."""
         subject = self._subject_factory(name) if callable(self._subject_factory) else f"{self._subject_factory}.{name}"
         self.update_run_id(name, doc)
