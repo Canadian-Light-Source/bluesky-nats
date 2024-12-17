@@ -19,7 +19,23 @@ This module allows to:
 
 == Installation
 
-So far, the module needs to be installed from sources.
+.pypi installation from CLS pypi using `uv`
+[%collapsible%open]
+====
+[source, bash]
+----
+uv add --extra-index-url https://pypi.clsi.ca/simple/ bluesky-nats
+----
+====
+
+.pypi installation from CLS pypi using `pip`
+[%collapsible]
+====
+[source, bash]
+----
+pip install -i https://pypi.clsi.ca/simple/ bluesky-nats
+----
+====
 
 .local installation
 [%collapsible]
