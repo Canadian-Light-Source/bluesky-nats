@@ -126,7 +126,7 @@ def test_update_run_id_success_exception(publisher) -> None:
 
 
 @given(text())
-def test_validate_subject_factory_sucess(test_str: str) -> None:
+def test_validate_subject_factory_success(test_str: str) -> None:
     """Test the subject factory validator with strings."""
     assert NATSPublisher.validate_subject_factory(test_str) == test_str
     assert callable(NATSPublisher.validate_subject_factory(lambda: test_str))
