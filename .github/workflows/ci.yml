@@ -1,0 +1,16 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    uses: ./.github/workflows/_check.yml
+
+  lint:
+    needs: check
+    if: needs.check.outputs.branch-pr == ''
+    uses: ./.github/workflows/ruff.yml
+    # with:
+    #   tox: pre-commit,type-checking

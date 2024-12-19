@@ -1,10 +1,11 @@
 [project]
 name = "bluesky-nats"
-version = "0.1.2"
+version = "0.1.2_rc1"
 description = "NATS JetStream connectivity for Bluesky"
 authors = [
     {name = "Niko Kivel", email = "niko.kivel@lightsource.ca"},
 ]
+license.file = "LICENSE"
 requires-python = ">=3.10"
 dependencies = [
     "bluesky>=1.12.0",
@@ -19,8 +20,8 @@ examples = [
 ]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=64", "setuptools_scm[toml]>=6.2", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [tool.uv]
 dev-dependencies = [
