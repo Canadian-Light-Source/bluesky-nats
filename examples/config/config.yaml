@@ -1,7 +1,7 @@
 ---
 servers:
 - nats://localhost:4222
-name: 
+name:
 pedantic: false
 verbose: false
 allow_reconnect: true
@@ -13,16 +13,16 @@ max_outstanding_pings: 2
 dont_randomize: false
 flusher_queue_size: 1024
 no_echo: false
-tls: 
-tls_hostname: 
+tls:
+tls_hostname:
 tls_handshake_first: false
-user: 
-password: 
-token: 
+user:
+password:
+token:
 drain_timeout: 30
-user_credentials: 
-nkeys_seed: 
-nkeys_seed_str: 
+user_credentials:
+nkeys_seed:
+nkeys_seed_str:
 inbox_prefix: "_INBOX"
 pending_size: 2097152
-flush_timeout: 
+flush_timeout:

@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+    - uses: pre-commit/action@v3.0.1
+
+  check:
+    uses: ./.github/workflows/_check.yml
+
+  lint:
+    needs: check
+    if: needs.check.outputs.branch-pr == ''
+    uses: ./.github/workflows/ruff.yml
+
+  test:
+    needs: check
+    if: needs.check.outputs.branch-pr == ''
+    strategy:
+      matrix:
+        # runs-on: ["ubuntu-latest", "windows-latest", "macos-latest"]
+        runs-on: ["ubuntu-latest"] # Linux for now
+        # python-version: ["3.10","3.11","3.12"]
+        python-version: ["3.12"]  # single Python version for now
+      fail-fast: false
+    uses: ./.github/workflows/_test.yml
+    with:
+      runs-on: ${{ matrix.runs-on }}
+      python-version: ${{ matrix.python-version }}
+
+  dist:
+    needs: check
+    if: needs.check.outputs.branch-pr == ''
+    uses: ./.github/workflows/_dist.yml
+
+  pypi:
+    if: github.ref_type == 'tag'
+    needs: dist
+    uses: ./.github/workflows/_pypi.yml
+    # permissions:
+    #   id-token: write

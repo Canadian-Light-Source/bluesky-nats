@@ -1,0 +1,27 @@
+name: Pytest
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        type: string
+        description: The version of python to install
+        required: true
+      runs-on:
+        type: string
+        description: The runner to run this job on
+        required: true
+
+jobs:
+  pytest:
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the latest version of uv and set the python version
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Test with python ${{ matrix.python-version }}
+        run: |
+          uv run --frozen pytest
+          uv run --frozen coverage run -m pytest -v
+          uv run --frozen coverage report
