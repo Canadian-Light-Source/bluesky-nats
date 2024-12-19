@@ -26,10 +26,10 @@ jobs:
     if: needs.check.outputs.branch-pr == ''
     strategy:
       matrix:
-        # runs-on: ["ubuntu-latest", "windows-latest", "macos-latest"]
-        runs-on: ["ubuntu-latest"] # Linux for now
-        # python-version: ["3.10","3.11","3.12"]
-        python-version: ["3.12"]  # single Python version for now
+        runs-on: ["ubuntu-latest", "windows-latest", "macos-latest"]
+        # runs-on: ["ubuntu-latest"] # Linux for now
+        python-version: ["3.10","3.11","3.12"]
+        # python-version: ["3.12"]  # single Python version for now
       fail-fast: false
     uses: ./.github/workflows/_test.yml
     with:
@@ -45,5 +45,3 @@ jobs:
     if: github.ref_type == 'tag'
     needs: dist
     uses: ./.github/workflows/_pypi.yml
-    # permissions:
-    #   id-token: write
