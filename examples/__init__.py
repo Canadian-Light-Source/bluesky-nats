@@ -1,2 +1,1 @@
 """nats-bluesky examples."""
-
