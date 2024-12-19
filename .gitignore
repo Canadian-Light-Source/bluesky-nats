@@ -164,3 +164,4 @@ cython_debug/
 
 # VSCode
 .vscode
+src/bluesky_nats/_version.py

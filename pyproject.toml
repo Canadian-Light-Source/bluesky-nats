@@ -1,17 +1,37 @@
 [project]
 name = "bluesky-nats"
-version = "0.1.2_rc1"
 description = "NATS JetStream connectivity for Bluesky"
 authors = [
     {name = "Niko Kivel", email = "niko.kivel@lightsource.ca"},
 ]
+maintainers = [
+  { name = "Canadian Lightsource Inc.", email = "niko.kivel@lightsource.ca" },
+]
+
+
 license.file = "LICENSE"
 requires-python = ">=3.10"
+
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Physics",
+]
+
+dynamic = ["version"]
+
 dependencies = [
     "bluesky>=1.12.0",
     "nats-py>=2.9.0",
     "ormsgpack>=1.5.0",
 ]
+
+[project.urls]
+GitHub = "https://github.com/Canadian-Light-Source/bluesky-nats"
 
 [project.optional-dependencies]
 examples = [
@@ -20,8 +40,13 @@ examples = [
 ]
 
 [build-system]
-requires = ["setuptools>=64", "setuptools_scm[toml]>=6.2", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch]
+version.source = "vcs"
+version.fallback-version = "0.0.0"
+build.hooks.vcs.version-file = "src/bluesky_nats/_version.py"
 
 [tool.uv]
 dev-dependencies = [
