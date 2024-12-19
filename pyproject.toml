@@ -46,7 +46,7 @@ select = ["ALL"]
 ignore = [
     "ANN003", # Missing type annotation for `**kwargs`
     "ANN401", # allow `Any`
-    "ANN204", # add return type None to __init__
+    # "ANN204", # add return type None to __init__
     "D100",
     "D101",
     "D102",
