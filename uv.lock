@@ -34,7 +34,7 @@ wheels = [
 
 [[package]]
 name = "bluesky-nats"
-version = "0.1.2rc1"
+version = "0.1.2rc2.dev0+gff47876.d20241219"
 source = { editable = "." }
 dependencies = [
     { name = "bluesky" },
