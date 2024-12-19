@@ -42,7 +42,7 @@ jobs:
     uses: ./.github/workflows/_dist.yml
 
   pypi:
-    # if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag'
     needs: dist
     uses: ./.github/workflows/_pypi.yml
     # permissions:
