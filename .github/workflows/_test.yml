@@ -23,5 +23,5 @@ jobs:
       - name: Test with python ${{ matrix.python-version }}
         run: |
           uv run --frozen pytest
-          coverage run -m pytest -v
-          coverage report
+          uv run --frozen coverage run -m pytest -v
+          uv run --frozen coverage report
