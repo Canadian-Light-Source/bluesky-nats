@@ -14,13 +14,7 @@ jobs:
           name: dist
           path: dist
 
-      # - name: Publish to PyPI using trusted publishing
-      #   uses: pypa/gh-action-pypi-publish@release/v1
-      #   with:
-      #     attestations: false
-
-      - name: Publish package distributions to TestPyPI
+      - name: Publish to PyPI using trusted publishing
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          repository-url: https://test.pypi.org/legacy/
           attestations: false
