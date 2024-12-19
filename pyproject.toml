@@ -8,7 +8,7 @@ maintainers = [
   { name = "Canadian Lightsource Inc.", email = "niko.kivel@lightsource.ca" },
 ]
 
-
+readme = "README.md"
 license.file = "LICENSE"
 requires-python = ">=3.10"
 
