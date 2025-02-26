@@ -56,7 +56,6 @@ class NATSPublisher(Publisher):
         logger.debug(f"new {__class__} instance created.")
 
         self._client_config = client_config if client_config is not None else NATSClientConfig()
-        print(f"Client Configuration:\n{self._client_config}")
 
         self.executor = executor
 
