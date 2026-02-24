@@ -73,10 +73,10 @@ def test_load_data_toml(mocker: MockerFixture):
 
 
 def test_toml_import_error(mocker: MockerFixture):
-    """Test ImportError for missing pytoml module."""
+    """Test ImportError for missing toml module."""
     mocker.patch.object(filehandler_module, "toml_lib", None)
 
     handler = TOMLFileHandler(Path("test.toml"))
 
-    with pytest.raises(ImportError, match="TOML configuration requires 'pytoml' library"):
+    with pytest.raises(ImportError, match="TOML configuration requires 'toml' library"):
         handler.load_data()
