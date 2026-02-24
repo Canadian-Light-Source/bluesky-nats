@@ -28,9 +28,7 @@ def mock_executor():
 def test_init_publisher(mock_executor):
     """Test the default NATSPublisher constructor."""
     try:
-        publisher = NATSPublisher(
-            executor=mock_executor,
-        )
+        publisher = NATSPublisher(executor=mock_executor)
         # init no longer triggers connection; it is lazy and non-blocking
         mock_executor.submit_coroutine.assert_not_called()
         assert publisher.js is None
@@ -71,10 +69,7 @@ def test_init_rejects_executor_without_submit_coroutine() -> None:
 def publisher(mock_executor):
     """Fixture to initialize NATSPublisher with mocks."""
     publisher = NATSPublisher(
-        executor=mock_executor,
-        client_config=NATSClientConfig(),
-        stream="test_stream",
-        subject_factory="test.subject",
+        executor=mock_executor, client_config=NATSClientConfig(), stream="test_stream", subject_factory="test.subject"
     )
     publisher.js = AsyncMock()
     publisher.run_id = uuid4()  # Set a valid run_id
