@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from pytest_mock import MockerFixture
 
+import bluesky_nats.filehandler as filehandler_module
 from bluesky_nats.filehandler import FileHandler, JSONFileHandler, TOMLFileHandler, YAMLFileHandler
 
 
@@ -49,15 +50,14 @@ def test_load_data_yaml(yaml_mock_file, mocker: MockerFixture):
 
 def test_yaml_import_error(yaml_mock_file, mocker: MockerFixture):
     """Test ImportError for missing pyyaml module."""
-    mock_yaml_load = mocker.patch("yaml.safe_load")
-    mock_yaml_load.side_effect = ImportError
+    mocker.patch.object(filehandler_module, "yaml_lib", None)
 
     handler = YAMLFileHandler(Path("test.yaml"))
 
     with pytest.raises(ImportError, match="YAML configuration requires 'pyyaml' library"):
         handler.load_data()
 
-    yaml_mock_file.assert_called_once_with("r")
+    yaml_mock_file.assert_not_called()
 
 
 def test_load_data_toml(mocker: MockerFixture):
@@ -74,8 +74,7 @@ def test_load_data_toml(mocker: MockerFixture):
 
 def test_toml_import_error(mocker: MockerFixture):
     """Test ImportError for missing pytoml module."""
-    mock_toml_load = mocker.patch("toml.load")
-    mock_toml_load.side_effect = ImportError
+    mocker.patch.object(filehandler_module, "toml_lib", None)
 
     handler = TOMLFileHandler(Path("test.toml"))
 

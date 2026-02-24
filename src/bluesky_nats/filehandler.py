@@ -34,7 +34,6 @@ class YAMLFileHandler(FileHandler):
         if yaml_lib is None:
             msg = "YAML configuration requires 'pyyaml' library. Please install it."
             raise ImportError(msg)
-
         with self.file_path.open("r") as f:
             return yaml_lib.safe_load(f)
 
@@ -44,5 +43,4 @@ class TOMLFileHandler(FileHandler):
         if toml_lib is None:
             msg = "TOML configuration requires 'toml' library. Please install it."
             raise ImportError(msg)
-
         return toml_lib.load(self.file_path)
