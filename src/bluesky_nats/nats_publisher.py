@@ -1,31 +1,43 @@
+from __future__ import annotations
+
 import asyncio
 from abc import ABC, abstractmethod
-from collections.abc import Callable
-from concurrent.futures import Executor
+from concurrent.futures import Executor, Future
 from dataclasses import asdict
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any, Protocol
 
 from bluesky.log import logger
 from nats.aio.client import Client as NATS  # noqa: N814
-from nats.js import JetStreamContext
 from nats.js.errors import NoStreamResponseError
 from ormsgpack import OPT_NAIVE_UTC, OPT_SERIALIZE_NUMPY, packb
 
 from bluesky_nats.nats_client import NATSClientConfig
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
+    from uuid import UUID
+
+    from nats.js import JetStreamContext
 
 
 class CoroutineExecutor(Executor):
     def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
         self.loop = loop
 
+    def submit_coroutine(self, coro: Coroutine[Any, Any, Any]) -> Future[Any]:
+        return asyncio.run_coroutine_threadsafe(coro, self.loop)
+
     def submit(self, fn: Callable, *args, **kwargs) -> Any:  # noqa: ANN002
         if not callable(fn):
             msg = f"Expected callable, got {type(fn).__name__}"
             raise TypeError(msg)
         if asyncio.iscoroutinefunction(fn):
-            return asyncio.run_coroutine_threadsafe(fn(*args, **kwargs), self.loop)
+            return self.submit_coroutine(fn(*args, **kwargs))
         return self.loop.run_in_executor(None, fn, *args, **kwargs)
+
+
+class CoroutineSubmittingExecutor(Protocol):
+    def submit_coroutine(self, coro: Coroutine[Any, Any, Any]) -> Future[Any]: ...
 
 
 class Publisher(ABC):
@@ -43,12 +55,9 @@ class Publisher(ABC):
 class NATSPublisher(Publisher):
     """Publisher class using NATS."""
 
-    nats_client = NATS()
-    js: JetStreamContext
-
     def __init__(
         self,
-        executor: Executor,
+        executor: CoroutineSubmittingExecutor,
         client_config: NATSClientConfig | None = None,
         stream: str | None = "bluesky",
         subject_factory: Callable | str | None = "events.volatile",
@@ -57,13 +66,19 @@ class NATSPublisher(Publisher):
 
         self._client_config = client_config if client_config is not None else NATSClientConfig()
 
+        if not hasattr(executor, "submit_coroutine"):
+            msg = "executor must provide a submit_coroutine(coro) method"
+            raise TypeError(msg)
+
         self.executor = executor
+        self.nats_client = NATS()
+        self.js: JetStreamContext
 
         self._stream = stream
         self._subject_factory = self.validate_subject_factory(subject_factory)
 
         # establish a connection to the server
-        future = self.executor.submit(self._connect, self._client_config)
+        future = self.executor.submit_coroutine(self._connect(self._client_config))
         try:
             _ = future.result()
         except Exception as e:
@@ -91,7 +106,7 @@ class NATSPublisher(Publisher):
         headers = {"run_id": self.run_id}
 
         payload = packb(doc, option=OPT_NAIVE_UTC | OPT_SERIALIZE_NUMPY)
-        self.executor.submit(self.publish, subject=subject, payload=payload, headers=headers)
+        self.executor.submit_coroutine(self.publish(subject=subject, payload=payload, headers=headers))
 
     def update_run_id(self, name: str, doc: dict) -> None:
         if name == "start":

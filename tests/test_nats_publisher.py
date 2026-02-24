@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import asdict
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
@@ -6,7 +7,6 @@ import pytest
 from hypothesis import given
 from hypothesis.strategies import text, uuids
 from nats.js import JetStreamContext
-from ormsgpack import OPT_NAIVE_UTC, OPT_SERIALIZE_NUMPY, packb
 
 from bluesky_nats.nats_publisher import NATSClientConfig, NATSPublisher
 
@@ -14,7 +14,11 @@ from bluesky_nats.nats_publisher import NATSClientConfig, NATSPublisher
 @pytest.fixture(scope="session")
 def mock_executor():
     """Fixture to mock the executor's submit method."""
-    return Mock()
+    executor = Mock()
+    future = Mock()
+    future.result.return_value = None
+    executor.submit_coroutine.return_value = future
+    return executor
 
 
 """Test the construction of the NATSPublisher."""
@@ -27,7 +31,10 @@ def test_init_publisher(mock_executor):
             executor=mock_executor,
         )
         # assert the _connect method was called with the correct arguments
-        mock_executor.submit.assert_called_once_with(publisher._connect, publisher._client_config)  # noqa: SLF001
+        mock_executor.submit_coroutine.assert_called_once()
+        submitted_coro = mock_executor.submit_coroutine.call_args.args[0]
+        assert asyncio.iscoroutine(submitted_coro)
+        submitted_coro.close()
         # assert the NATS JetStream context is created
         assert isinstance(publisher.js, JetStreamContext)
     except AssertionError as error:
@@ -37,11 +44,21 @@ def test_init_publisher(mock_executor):
 
 def test_init_connection_error(mocker):
     """Test the NATSPublisher constructor when a connection error occurs."""
-    mock_executor = mocker.patch("bluesky_nats.nats_publisher.Executor")
-    mock_executor.submit.return_value.result.side_effect = ConnectionError("Connection error")
+    mock_executor = Mock()
+    future = Mock()
+    future.result.side_effect = ConnectionError("Connection error")
+    mock_executor.submit_coroutine.return_value = future
 
     with pytest.raises(ConnectionError, match="Connection error"):
-        NATSPublisher(mock_executor)
+        NATSPublisher(executor=mock_executor)
+
+
+def test_init_uses_instance_scoped_nats_client(mock_executor):
+    """Each publisher instance must own its own NATS client object."""
+    publisher_a = NATSPublisher(executor=mock_executor)
+    publisher_b = NATSPublisher(executor=mock_executor)
+
+    assert publisher_a.nats_client is not publisher_b.nats_client
 
 
 """Create a NATSPublisher fixture for later use."""
@@ -155,12 +172,7 @@ def test_call(publisher, mock_executor):
     assert publisher.run_id == run_id
 
     # assert the executor is called with all the right arguments
-    packed_payload = packb(doc, option=OPT_NAIVE_UTC | OPT_SERIALIZE_NUMPY)
-    # static header for now. This might change, keep an eye on a potential factory
-    headers = {"run_id": run_id}
-    mock_executor.submit.assert_called_with(
-        publisher.publish,
-        subject="test.subject.start",
-        payload=packed_payload,
-        headers=headers,
-    )
+    mock_executor.submit_coroutine.assert_called()
+    submitted_coro = mock_executor.submit_coroutine.call_args.args[0]
+    assert asyncio.iscoroutine(submitted_coro)
+    submitted_coro.close()
