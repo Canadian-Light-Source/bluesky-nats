@@ -14,6 +14,7 @@ from ormsgpack import OPT_NAIVE_UTC, OPT_SERIALIZE_NUMPY, packb
 
 from bluesky_nats.nats_client import NATSClientConfig
 
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from uuid import UUID

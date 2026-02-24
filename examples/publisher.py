@@ -3,6 +3,7 @@ from bluesky.run_engine import RunEngine
 from bluesky_nats.nats_client import NATSClientConfig
 from bluesky_nats.nats_publisher import CoroutineExecutor, NATSPublisher
 
+
 if __name__ == "__main__":
     RE = RunEngine({})
     config = NATSClientConfig(servers=["nats://localhost:14222"])

@@ -174,7 +174,7 @@ def test_builder_get_file_handler(mock_path_exists, mock_file) -> None:
     mock_file.assert_not_called()
 
     # Simulate non-existent file for the ValueError case
-    with pytest.raises(ValueError, match="Unsupported file format: .txt"):
+    with pytest.raises(ValueError, match=r"Unsupported file format: \.txt"):
         NATSClientConfigBuilder.get_file_handler("config.txt")
 
     # Simulate non-existent file for FileNotFoundError

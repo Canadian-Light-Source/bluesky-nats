@@ -6,6 +6,7 @@ import bluesky_nats.callbacks
 from bluesky_nats.nats_client import NATSClientConfig
 from bluesky_nats.nats_publisher import CoroutineExecutor, NATSPublisher
 
+
 if __name__ == "__main__":
     RE = RunEngine({})
     config = NATSClientConfig()

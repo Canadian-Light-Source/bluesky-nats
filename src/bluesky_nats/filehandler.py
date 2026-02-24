@@ -21,7 +21,7 @@ class JSONFileHandler(FileHandler):
 class YAMLFileHandler(FileHandler):
     def load_data(self) -> dict:
         try:
-            import yaml
+            import yaml  # noqa: PLC0415
 
             with self.file_path.open("r") as f:
                 return yaml.safe_load(f)
@@ -33,7 +33,7 @@ class YAMLFileHandler(FileHandler):
 class TOMLFileHandler(FileHandler):
     def load_data(self) -> dict:
         try:
-            import toml
+            import toml  # noqa: PLC0415
 
             return toml.load(self.file_path)
         except ImportError as error:

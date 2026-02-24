@@ -5,6 +5,7 @@ from bluesky.callbacks.best_effort import BestEffortCallback
 from bluesky_nats.nats_client import NATSClientConfig
 from bluesky_nats.nats_dispatcher import NATSDispatcher
 
+
 client_config = NATSClientConfig()
 
 

@@ -1,6 +1,6 @@
 import ssl
 from collections.abc import Callable
-from dataclasses import dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +21,7 @@ from nats.aio.client import (
 )
 
 from bluesky_nats.filehandler import FileHandler, JSONFileHandler, TOMLFileHandler, YAMLFileHandler
+
 
 CALLBACK_SUFFIX = "_cb"
 
@@ -81,10 +82,8 @@ class NATSClientConfig:
 class NATSClientConfigBuilder:
     def __init__(self):
         self._config = {}
-        from dataclasses import _MISSING_TYPE
-
         for class_field in fields(NATSClientConfig):
-            if isinstance(class_field.default_factory, _MISSING_TYPE):
+            if class_field.default_factory is MISSING:
                 self._config[class_field.name] = class_field.default
             else:
                 self._config[class_field.name] = class_field.default_factory()

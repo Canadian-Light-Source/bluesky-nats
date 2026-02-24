@@ -13,6 +13,7 @@ from ormsgpack import unpackb
 
 from bluesky_nats.nats_client import NATSClientConfig
 
+
 if TYPE_CHECKING:
     from nats.js import JetStreamContext
 

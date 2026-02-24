@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 from hypothesis import given
 from hypothesis.strategies import text, uuids
+from nats.js.errors import NoStreamResponseError
 
 from bluesky_nats.nats_publisher import NATSClientConfig, NATSPublisher
 
@@ -153,8 +154,6 @@ async def test_publish(publisher):
 @pytest.mark.asyncio
 async def test_publish_no_stream_response_error(mocker, publisher):
     """Test the publish method of NATSPublisher when NoStreamResponseError is raised."""
-    from nats.js.errors import NoStreamResponseError
-
     mock_js = mocker.patch.object(publisher, "js")
     mock_js.publish.side_effect = NoStreamResponseError("No streams available")
 
