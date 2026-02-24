@@ -101,9 +101,7 @@ def mock_path_exists(mocker):
 def mock_json_config_file(mocker):
     """Mock JSON file."""
     return mocker.patch(
-        "pathlib.Path.open",
-        new_callable=mocker.mock_open,
-        read_data='{"servers": ["nats://example.com:4222"]}',
+        "pathlib.Path.open", new_callable=mocker.mock_open, read_data='{"servers": ["nats://example.com:4222"]}'
     )
 
 
@@ -143,38 +141,25 @@ def test_from_file_invalid_key(mocker):
 @pytest.fixture
 def mock_file(mocker):
     """Mock TOML file."""
-    return mocker.patch(
-        "pathlib.Path.open",
-        new_callable=mocker.mock_open,
-        read_data="{}",
-    )
+    return mocker.patch("pathlib.Path.open", new_callable=mocker.mock_open, read_data="{}")
 
 
 def test_builder_get_file_handler(mock_path_exists, mock_file) -> None:
     """Test builder_get_file_handler."""
     # Test JSON handler
-    assert isinstance(
-        NATSClientConfigBuilder.get_file_handler("config.json"),
-        JSONFileHandler,
-    )
+    assert isinstance(NATSClientConfigBuilder.get_file_handler("config.json"), JSONFileHandler)
 
     # Test YAML handler
-    assert isinstance(
-        NATSClientConfigBuilder.get_file_handler("config.yaml"),
-        YAMLFileHandler,
-    )
+    assert isinstance(NATSClientConfigBuilder.get_file_handler("config.yaml"), YAMLFileHandler)
 
     # Test TOML handler
-    assert isinstance(
-        NATSClientConfigBuilder.get_file_handler("config.toml"),
-        TOMLFileHandler,
-    )
+    assert isinstance(NATSClientConfigBuilder.get_file_handler("config.toml"), TOMLFileHandler)
 
     # Ensure that the file open method was not called
     mock_file.assert_not_called()
 
     # Simulate non-existent file for the ValueError case
-    with pytest.raises(ValueError, match="Unsupported file format: .txt"):
+    with pytest.raises(ValueError, match=r"Unsupported file format: \.txt"):
         NATSClientConfigBuilder.get_file_handler("config.txt")
 
     # Simulate non-existent file for FileNotFoundError

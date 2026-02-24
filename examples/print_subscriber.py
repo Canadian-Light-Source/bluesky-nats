@@ -2,6 +2,7 @@ import asyncio
 
 from bluesky_nats.nats_dispatcher import NATSDispatcher
 
+
 if __name__ == "__main__":
     # Example 1: Using context manager
     async def async_main() -> None:

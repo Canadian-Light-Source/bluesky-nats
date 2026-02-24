@@ -3,6 +3,17 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 
+try:
+    import yaml as yaml_lib
+except ImportError:
+    yaml_lib = None
+
+try:
+    import toml as toml_lib
+except ImportError:
+    toml_lib = None
+
+
 class FileHandler(ABC):
     def __init__(self, file_path: Path):
         self.file_path = file_path
@@ -20,22 +31,16 @@ class JSONFileHandler(FileHandler):
 
 class YAMLFileHandler(FileHandler):
     def load_data(self) -> dict:
-        try:
-            import yaml
-
-            with self.file_path.open("r") as f:
-                return yaml.safe_load(f)
-        except ImportError as error:
+        if yaml_lib is None:
             msg = "YAML configuration requires 'pyyaml' library. Please install it."
-            raise ImportError(msg) from error
+            raise ImportError(msg)
+        with self.file_path.open("r") as f:
+            return yaml_lib.safe_load(f)
 
 
 class TOMLFileHandler(FileHandler):
     def load_data(self) -> dict:
-        try:
-            import toml
-
-            return toml.load(self.file_path)
-        except ImportError as error:
-            msg = "TOML configuration requires 'pytoml' library. Please install it."
-            raise ImportError(msg) from error
+        if toml_lib is None:
+            msg = "TOML configuration requires 'toml' library. Please install it."
+            raise ImportError(msg)
+        return toml_lib.load(self.file_path)

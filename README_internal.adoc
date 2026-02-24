@@ -112,4 +112,4 @@ config = (
 
 IMPORTANT: Subsequent calls to `.from_file` will overwrite _all_ fields.
 
-NOTE: The callbacks have to match the expexted type. `error_cb`, `disconnected_cb`, `closed_cb`, `reconnected_cb` and                   `discovered_server_cb` must be coroutines.
+NOTE: The callbacks have to match the expected type. `error_cb`, `disconnected_cb`, `closed_cb`, `reconnected_cb` and                   `discovered_server_cb` must be coroutines.
