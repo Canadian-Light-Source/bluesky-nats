@@ -33,8 +33,7 @@ class NATSDispatcher(Dispatcher):
         self._client_config = client_config if client_config is not None else NATSClientConfig()
 
         self._consumer_config = ConsumerConfig(
-            description="Bluesky Dispatcher for NATS",
-            deliver_policy=DeliverPolicy.NEW,
+            description="Bluesky Dispatcher for NATS", deliver_policy=DeliverPolicy.NEW
         )
 
         self._deserializer = deserializer
@@ -68,10 +67,7 @@ class NATSDispatcher(Dispatcher):
 
     async def _subscribe(self) -> None:
         self._subscription = await self._js.subscribe(
-            subject=self._subject,
-            stream=self._stream_name,
-            ordered_consumer=True,
-            config=self._consumer_config,
+            subject=self._subject, stream=self._stream_name, ordered_consumer=True, config=self._consumer_config
         )
 
     async def _poll(self) -> None:
@@ -100,11 +96,7 @@ class NATSDispatcher(Dispatcher):
 
     def start(self) -> None:
         if self.closed:
-            msg = (
-                "This NATSDispatcher has already been "
-                "started and interrupted. Create a fresh "
-                f"instance with {self!r}"
-            )
+            msg = f"This NATSDispatcher has already been started and interrupted. Create a fresh instance with {self!r}"
             raise RuntimeError(msg)
         try:
             setup_task = self.loop.create_task(self._setup())

@@ -5,8 +5,7 @@ services:
     ports:
       - "4222:4222"
       - "8222:8222"
-    command:
-      "--jetstream --store_dir /data"
+    command: "--jetstream --store_dir /data"
     networks:
       - backend
     volumes:

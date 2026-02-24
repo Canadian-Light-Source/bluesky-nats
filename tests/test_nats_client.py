@@ -101,7 +101,7 @@ def mock_path_exists(mocker):
 def mock_json_config_file(mocker):
     """Mock JSON file."""
     return mocker.patch(
-        "pathlib.Path.open", new_callable=mocker.mock_open, read_data='{"servers": ["nats://example.com:4222"]}',
+        "pathlib.Path.open", new_callable=mocker.mock_open, read_data='{"servers": ["nats://example.com:4222"]}'
     )
 
 

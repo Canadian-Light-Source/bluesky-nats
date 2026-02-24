@@ -80,6 +80,7 @@ ignore = [
     "PLR0913", # Too many arguments in function definition (6 > 5)
     "T201",    # allow print
     "FA",      # allow missing  "Missing `from __future__ import annotations`, but uses XXX"
+    "COM812",
     # "W503",  # Flake8 considers line-breaks before operators to be best practice, contrary to PEP 8
 ]
 

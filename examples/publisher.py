@@ -9,9 +9,7 @@ if __name__ == "__main__":
     config = NATSClientConfig(servers=["nats://localhost:14222"])
 
     nats_publisher = NATSPublisher(
-        client_config=config,
-        executor=CoroutineExecutor(RE.loop),
-        subject_factory="events.nats-bluesky",
+        client_config=config, executor=CoroutineExecutor(RE.loop), subject_factory="events.nats-bluesky"
     )
 
     RE.subscribe(nats_publisher)

@@ -1,7 +1,5 @@
 {
-  "servers": [
-    "nats://localhost:4222"
-  ],
+  "servers": ["nats://localhost:4222"],
   "name": null,
   "pedantic": false,
   "verbose": false,
