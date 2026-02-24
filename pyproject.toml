@@ -1,11 +1,9 @@
 [project]
 name = "bluesky-nats"
 description = "NATS JetStream connectivity for Bluesky"
-authors = [
-    {name = "Niko Kivel", email = "niko.kivel@lightsource.ca"},
-]
+authors = [{ name = "Niko Kivel", email = "niko.kivel@lightsource.ca" }]
 maintainers = [
-  { name = "Canadian Lightsource Inc.", email = "niko.kivel@lightsource.ca" },
+    { name = "Canadian Lightsource Inc.", email = "niko.kivel@lightsource.ca" },
 ]
 
 readme = "README.md"
@@ -13,31 +11,26 @@ license.file = "LICENSE"
 requires-python = ">=3.10"
 
 classifiers = [
-  "Development Status :: 3 - Alpha",
-  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-  "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Topic :: Scientific/Engineering :: Physics",
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Physics",
 ]
 
 dynamic = ["version"]
 
-dependencies = [
-    "bluesky>=1.12.0",
-    "nats-py>=2.9.0",
-    "ormsgpack>=1.5.0",
-]
+dependencies = ["bluesky>=1.12.0", "nats-py>=2.9.0", "ormsgpack>=1.5.0"]
 
 [project.urls]
 GitHub = "https://github.com/Canadian-Light-Source/bluesky-nats"
 
 [project.optional-dependencies]
-examples = [
-    "matplotlib>=3.9.2",
-    "ophyd>=1.9.0",
-]
+examples = ["matplotlib>=3.9.2", "ophyd>=1.9.0"]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
@@ -70,24 +63,24 @@ line-length = 120
 select = ["ALL"]
 
 ignore = [
-    "ANN003", # Missing type annotation for `**kwargs`
-    "ANN401", # allow `Any`
-    "ANN204", # add return type None to __init__
+    "ANN003",  # Missing type annotation for `**kwargs`
+    "ANN401",  # allow `Any`
+    "ANN204",  # add return type None to __init__
     "D100",
     "D101",
     "D102",
-    "D107", # allow `__init__` w/o docstring
-    "D203", # empty line above class docstring
-    "D212", # multi line summary first line
-    "D401", # imparative docstring
-    "ERA001", # allow commented code
+    "D107",    # allow `__init__` w/o docstring
+    "D203",    # empty line above class docstring
+    "D212",    # multi line summary first line
+    "D401",    # imparative docstring
+    "ERA001",  # allow commented code
     "F541",
-    "FIX", # Line contains TODO, consider resolving the issue
-    "G004", # logging statement uses f-string
-    "PTH118", # `os.path.join()` should be replaced by `Path` with `/` operator
+    "FIX",     # Line contains TODO, consider resolving the issue
+    "G004",    # logging statement uses f-string
+    "PTH118",  # `os.path.join()` should be replaced by `Path` with `/` operator
     "PLR0913", # Too many arguments in function definition (6 > 5)
-    "T201", # allow print
-    "FA", # allow missing  "Missing `from __future__ import annotations`, but uses XXX"
+    "T201",    # allow print
+    "FA",      # allow missing  "Missing `from __future__ import annotations`, but uses XXX"
     # "W503",  # Flake8 considers line-breaks before operators to be best practice, contrary to PEP 8
 ]
 
@@ -95,8 +88,8 @@ ignore = [
 "tests/**/*.py" = [
     # at least this three should be fine in tests:
     "S101", # asserts allowed in tests...
-    "ANN", # allow missing type annotation
-    "ARG", # Unused function args -> fixtures nevertheless are functionally relevant...
+    "ANN",  # allow missing type annotation
+    "ARG",  # Unused function args -> fixtures nevertheless are functionally relevant...
     # "FBT", # Don't care about booleans as positional arguments in tests, e.g. via @pytest.mark.parametrize()
     # # The below are debateable
     "PLR2004", # Magic value used in comparison, ...
