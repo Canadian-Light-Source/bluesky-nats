@@ -69,7 +69,7 @@ def test_init_rejects_executor_without_submit_coroutine() -> None:
 def publisher(mock_executor):
     """Fixture to initialize NATSPublisher with mocks."""
     publisher = NATSPublisher(
-        executor=mock_executor, client_config=NATSClientConfig(), stream="test_stream", subject_factory="test.subject"
+        executor=mock_executor, client_config=NATSClientConfig(), stream="test_stream", subject_factory="test.subject",
     )
     publisher.js = AsyncMock()
     publisher.run_id = uuid4()  # Set a valid run_id
