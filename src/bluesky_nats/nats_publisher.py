@@ -4,6 +4,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from concurrent.futures import Executor, Future
 from dataclasses import asdict
+from threading import Lock
 from typing import TYPE_CHECKING, Any, Protocol
 
 from bluesky.log import logger
@@ -72,24 +73,12 @@ class NATSPublisher(Publisher):
 
         self.executor = executor
         self.nats_client = NATS()
-        self.js: JetStreamContext
+        self.js: JetStreamContext | None = None
+        self._connect_future: Future[Any] | None = None
+        self._connect_lock = Lock()
 
         self._stream = stream
         self._subject_factory = self.validate_subject_factory(subject_factory)
-
-        # establish a connection to the server
-        future = self.executor.submit_coroutine(self._connect(self._client_config))
-        try:
-            _ = future.result()
-        except Exception as e:
-            msg = f"{e!s}"
-            raise ConnectionError(msg) from e
-
-        # create the NATS JetStream context
-        # NOTE: The JetStream context requires the feature to be enabled on the server
-        #       and at least one stream needs to be existing
-        # NOTE: Streams will be managed centrally
-        self.js = self.nats_client.jetstream()
 
         self._run_id: UUID
 
@@ -106,6 +95,7 @@ class NATSPublisher(Publisher):
         headers = {"run_id": self.run_id}
 
         payload = packb(doc, option=OPT_NAIVE_UTC | OPT_SERIALIZE_NUMPY)
+        self._start_connect_if_needed()
         self.executor.submit_coroutine(self.publish(subject=subject, payload=payload, headers=headers))
 
     def update_run_id(self, name: str, doc: dict) -> None:
@@ -117,6 +107,32 @@ class NATSPublisher(Publisher):
 
     async def _connect(self, config: NATSClientConfig) -> None:
         await self.nats_client.connect(**asdict(config))
+        self.js = self.nats_client.jetstream()
+
+    def _start_connect_if_needed(self) -> None:
+        if self.js is not None or self._connect_future is not None:
+            return
+        with self._connect_lock:
+            if self.js is not None or self._connect_future is not None:
+                return
+            self._connect_future = self.executor.submit_coroutine(self._connect(self._client_config))
+
+    async def _ensure_connected(self) -> None:
+        self._start_connect_if_needed()
+        if self._connect_future is None:
+            return
+        try:
+            await asyncio.wrap_future(self._connect_future)
+        except Exception as e:
+            msg = f"{e!s}"
+            raise ConnectionError(msg) from e
+
+    async def _get_jetstream(self) -> JetStreamContext:
+        await self._ensure_connected()
+        if self.js is None:
+            msg = "NATS JetStream context is not available"
+            raise ConnectionError(msg)
+        return self.js
 
     @property
     def run_id(self) -> UUID:
@@ -128,8 +144,9 @@ class NATSPublisher(Publisher):
 
     async def publish(self, subject: str, payload: bytes, headers: dict) -> None:
         """Publish a message to a subject."""
+        js = await self._get_jetstream()
         try:
-            ack = await self.js.publish(subject=subject, payload=payload, headers=headers)
+            ack = await js.publish(subject=subject, payload=payload, headers=headers)
             logger.debug(f">>> Published to {subject}, ack: {ack}")
         except NoStreamResponseError as e:
             logger.exception(f"Server has no streams: {e!s}")
