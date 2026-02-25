@@ -5,7 +5,12 @@ import pytest
 from pytest_mock import MockerFixture
 
 import bluesky_nats.filehandler as filehandler_module
-from bluesky_nats.filehandler import FileHandler, JSONFileHandler, TOMLFileHandler, YAMLFileHandler
+
+
+FileHandler = filehandler_module.FileHandler
+JSONFileHandler = filehandler_module.JSONFileHandler
+TOMLFileHandler = filehandler_module.TOMLFileHandler
+YAMLFileHandler = filehandler_module.YAMLFileHandler
 
 
 def test_abstract_load_data() -> None:
