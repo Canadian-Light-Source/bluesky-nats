@@ -62,9 +62,9 @@ class NATSPublisher(Publisher):
         executor: CoroutineSubmittingExecutor,
         client_config: NATSClientConfig | None = None,
         stream: str | None = "bluesky",
-        subject_factory: Callable | str | None = "events.volatile",
+        subject_factory: Callable[[], str] | str | None = "events.volatile",
     ) -> None:
-        logger.debug(f"new {__class__} instance created.")
+        logger.debug(f"new {self.__class__} instance created.")
 
         self._client_config = client_config if client_config is not None else NATSClientConfig()
 
@@ -79,20 +79,17 @@ class NATSPublisher(Publisher):
         self._connect_lock = Lock()
 
         self._stream = stream
-        self._subject_factory = self.validate_subject_factory(subject_factory)
+        self._subject_factory: str | Callable[[], str] = self.validate_subject_factory(subject_factory)
 
         self._run_id: UUID
 
     def __call__(self, name: str, doc: dict) -> None:
         """Make instances of this Publisher callable."""
-        subject = (
-            f"{self._subject_factory()}.{name}"
-            if callable(self._subject_factory)
-            else f"{self._subject_factory}.{name}"
-        )
+        subject_factory = self._subject_factory
+        subject = f"{subject_factory}.{name}" if isinstance(subject_factory, str) else f"{subject_factory()}.{name}"
 
         self.update_run_id(name, doc)
-        # TODO: maybe worthwhile refacotring to a header factory for higher flexibility.  # noqa: TD002, TD003
+        # TODO: maybe worthwhile refactoring to a header factory for higher flexibility.  # noqa: TD002, TD003
         headers = {"run_id": self.run_id}
 
         payload = packb(doc, option=OPT_NAIVE_UTC | OPT_SERIALIZE_NUMPY)
@@ -155,12 +152,13 @@ class NATSPublisher(Publisher):
             logger.exception(f"Failed to publish to {subject}: {e!s}")
 
     @staticmethod
-    def validate_subject_factory(subject_factory: str | Callable | None) -> str | Callable:
+    def validate_subject_factory(subject_factory: str | Callable[[], str] | None) -> str | Callable[[], str]:
         """Type check the subject factory."""
         if isinstance(subject_factory, str):
             return subject_factory  # String is valid
         if callable(subject_factory):
-            if isinstance(subject_factory(), str):
+            result = subject_factory()
+            if isinstance(result, str):
                 return subject_factory  # Callable returning string is valid
             msg = "Callable must return a string"
             raise TypeError(msg)
