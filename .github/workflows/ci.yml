@@ -9,12 +9,11 @@ on:
   pull_request:
 
 jobs:
-  pre-commit:
+  prek:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-      - uses: pre-commit/action@v3.0.1
+      - uses: j178/prek-action@v1
     permissions:
       contents: read
 
@@ -24,7 +23,7 @@ jobs:
       contents: read
 
   test:
-    needs: [pre-commit, pyright]
+    needs: [prek, pyright]
     strategy:
       matrix:
         runs-on: ["ubuntu-latest", "windows-latest", "macos-latest"]
