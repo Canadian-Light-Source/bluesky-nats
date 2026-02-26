@@ -18,8 +18,13 @@ jobs:
     permissions:
       contents: read
 
+  pyright:
+    uses: ./.github/workflows/_pyright.yml
+    permissions:
+      contents: read
+
   test:
-    needs: pre-commit
+    needs: [pre-commit, pyright]
     strategy:
       matrix:
         runs-on: ["ubuntu-latest", "windows-latest", "macos-latest"]
