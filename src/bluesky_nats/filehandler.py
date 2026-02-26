@@ -1,15 +1,19 @@
+import importlib
 import json
 from abc import ABC, abstractmethod
 from pathlib import Path
+from types import ModuleType
 
 
+yaml_lib: ModuleType | None
 try:
-    import yaml as yaml_lib
+    yaml_lib = importlib.import_module("yaml")
 except ImportError:
     yaml_lib = None
 
+toml_lib: ModuleType | None
 try:
-    import toml as toml_lib
+    toml_lib = importlib.import_module("toml")
 except ImportError:
     toml_lib = None
 
