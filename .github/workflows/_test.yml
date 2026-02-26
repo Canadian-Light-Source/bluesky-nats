@@ -22,7 +22,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ inputs.python-version }}
-          enable-cache: true
+
       - name: Test with python ${{ matrix.python-version }}
         run: |
           uv run --frozen pytest
