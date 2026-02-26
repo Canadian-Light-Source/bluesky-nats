@@ -82,7 +82,7 @@ class NATSDispatcher(Dispatcher):
                     await msg.ack()
                 except Exception as e:  # noqa: BLE001
                     print(f"Error processing message: {e}")
-            except asyncio.CancelledError:  # noqa: PERF203
+            except asyncio.CancelledError:
                 break
             except NATS_TimeoutError:
                 continue
@@ -119,7 +119,7 @@ class NATSDispatcher(Dispatcher):
             self._task.cancel()
             try:
                 await asyncio.wait_for(self._task, timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 print("Task cancellation timed out")
             except Exception as e:  # noqa: BLE001
                 print(f"Error cancelling task: {e}")
@@ -127,7 +127,7 @@ class NATSDispatcher(Dispatcher):
         if self._subscription is not None:
             try:
                 await asyncio.wait_for(self._subscription.unsubscribe(), timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 print("Unsubscribe operation timed out")
             except Exception as e:  # noqa: BLE001
                 print(f"Error unsubscribing: {e}")
@@ -135,7 +135,7 @@ class NATSDispatcher(Dispatcher):
         if self._nc is not None and self._nc.is_connected:
             try:
                 await asyncio.wait_for(self._nc.close(), timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 print("NATS connection close timed out")
             except Exception as e:  # noqa: BLE001
                 print(f"Error closing NATS connection: {e}")
