@@ -26,6 +26,8 @@ jobs:
         python-version: ["3.14"] # test multiple Python versions, TODO: add all versions back in once we have CI working for 3.14
       fail-fast: false
     uses: ./.github/workflows/_test.yml
+    permissions:
+      contents: read
     with:
       runs-on: ${{ matrix.runs-on }}
       python-version: ${{ matrix.python-version }}
