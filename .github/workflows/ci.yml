@@ -17,13 +17,13 @@ jobs:
     permissions:
       contents: read
 
-  pyright:
-    uses: ./.github/workflows/_pyright.yml
+  ty:
+    uses: ./.github/workflows/_ty.yml
     permissions:
       contents: read
 
   test:
-    needs: [prek, pyright]
+    needs: [prek, ty]
     strategy:
       matrix:
         runs-on: ["ubuntu-latest", "windows-latest", "macos-latest"]

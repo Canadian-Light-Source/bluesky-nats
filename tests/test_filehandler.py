@@ -16,7 +16,7 @@ YAMLFileHandler = filehandler_module.YAMLFileHandler
 def test_abstract_load_data() -> None:
     """Abstract class loading must fail."""
     with pytest.raises(TypeError):
-        FileHandler(Path("test.txt"))  # type: ignore  # noqa: PGH003
+        FileHandler(Path("test.txt"))
 
 
 @pytest.fixture
