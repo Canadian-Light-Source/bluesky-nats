@@ -159,7 +159,5 @@ if __name__ == "__main__":
     dispatcher = NATSDispatcher(subject="events.>")
     try:
         dispatcher.start()
-    except KeyboardInterrupt:
-        pass
     finally:
         asyncio.run(dispatcher.stop())

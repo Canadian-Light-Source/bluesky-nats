@@ -1,3 +1,5 @@
+[![CI](https://github.com/Canadian-Light-Source/bluesky-nats/actions/workflows/ci.yml/badge.svg)](https://github.com/Canadian-Light-Source/bluesky-nats/actions/workflows/ci.yml)
+
 # bluesky-nats
 
 This module allows to:
