@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from concurrent.futures import Executor, Future
 from dataclasses import asdict
 from threading import Lock
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from bluesky.log import logger
 from nats.aio.client import Client as NATS  # noqa: N814
@@ -29,13 +29,14 @@ class CoroutineExecutor(Executor):
     def submit_coroutine(self, coro: Coroutine[Any, Any, Any]) -> Future[Any]:
         return asyncio.run_coroutine_threadsafe(coro, self.loop)
 
-    def submit(self, fn: Callable, *args, **kwargs) -> Any:  # noqa: ANN002
+    def submit(self, fn: object, *args, **kwargs) -> Any:  # noqa: ANN002
         if not callable(fn):
             msg = f"Expected callable, got {type(fn).__name__}"
             raise TypeError(msg)
-        if asyncio.iscoroutinefunction(fn):
-            return self.submit_coroutine(fn(*args, **kwargs))
-        return self.loop.run_in_executor(None, fn, *args, **kwargs)
+        callable_fn = cast("Callable[..., Any]", fn)
+        if asyncio.iscoroutinefunction(callable_fn):
+            return self.submit_coroutine(callable_fn(*args, **kwargs))
+        return self.loop.run_in_executor(None, callable_fn, *args, **kwargs)
 
 
 class CoroutineSubmittingExecutor(Protocol):
