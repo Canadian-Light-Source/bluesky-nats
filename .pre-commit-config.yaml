@@ -45,12 +45,12 @@ repos:
     hooks:
       - id: prettier
         types_or: [yaml, markdown, html, css, scss, javascript, json]
-        args: [--prose-wrap=always]
+        args: [--prose-wrap=preserve]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: "v0.15.3"
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: [--fix-only]
       - id: ruff-format
 
