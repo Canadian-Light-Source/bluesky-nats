@@ -49,11 +49,9 @@ dev = [
 [tool.uv]
 managed = true
 
-[tool.pyright]
-pythonVersion = "3.11"
+[tool.ty.src]
 include = ["src/bluesky_nats", "tests"]
 exclude = ["**/__pycache__"]
-typeCheckingMode = "standard"
 
 [tool.ruff]
 line-length = 120
