@@ -49,7 +49,7 @@ dev = [
 managed = true
 
 [tool.pyright]
-pythonVersion = "3.14"
+pythonVersion = "3.11"
 include = ["src/bluesky_nats", "tests"]
 exclude = ["**/__pycache__"]
 typeCheckingMode = "standard"
