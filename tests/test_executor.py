@@ -37,4 +37,4 @@ async def test_submit_non_callable():
     """Test the submit method with a non-callable object."""
     executor = CoroutineExecutor(asyncio.get_running_loop())
     with pytest.raises(TypeError, match="Expected callable"):
-        executor.submit(123)
+        executor.submit(123)  # pyright: ignore[reportArgumentType]

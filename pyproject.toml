@@ -8,13 +8,12 @@ maintainers = [
 
 readme = "README.md"
 license.file = "LICENSE"
-requires-python = ">=3.10,<3.15"
+requires-python = ">=3.11,<3.15"
 
 classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -37,12 +36,13 @@ dev = [
     "coverage>=7.6.1",
     "hypothesis>=6.112.1",
     "pre-commit>=4.0.1",
+    "pyright>=1.1.408",
     "pytest>=8.3.3",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=7.0.0",
     "pytest-mock>=3.14.0",
     "pyyaml>=6.0.2",
-    "ruff>=0.8.3",
+    "ruff>=0.15.3",
     "toml>=0.10.2",
 ]
 
@@ -50,7 +50,7 @@ dev = [
 managed = true
 
 [tool.pyright]
-pythonVersion = "3.10"
+pythonVersion = "3.11"
 include = ["src/bluesky_nats", "tests"]
 exclude = ["**/__pycache__"]
 typeCheckingMode = "standard"
