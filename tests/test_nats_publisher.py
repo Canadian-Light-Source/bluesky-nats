@@ -130,6 +130,17 @@ async def test_ensure_connected_resets_failed_future_for_retry(mock_executor) ->
     assert publisher._connect_future is None  # noqa: SLF001
 
 
+@pytest.mark.asyncio
+async def test_ensure_connection_fails_fast_in_running_loop(mock_executor) -> None:
+    """ensure_connection must not block the currently running event loop thread."""
+    publisher = NATSPublisher(executor=mock_executor)
+    pending_future: Future[None] = Future()
+    publisher._connect_future = pending_future  # noqa: SLF001
+
+    assert publisher.ensure_connection(timeout=10) is False
+    assert publisher._connect_future is pending_future  # noqa: SLF001
+
+
 def test_start_connect_if_needed_submits_when_js_exists_but_disconnected(mock_executor) -> None:
     """A stale JetStream context must not block reconnect attempts."""
     publisher = NATSPublisher(executor=mock_executor)

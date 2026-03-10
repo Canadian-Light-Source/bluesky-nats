@@ -123,6 +123,19 @@ class NATSPublisher(Publisher):
         self._start_connect_if_needed()
         if self._connect_future is None:
             return self.nats_client.is_connected and self.js is not None
+
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+
+        if running_loop is not None and not self._connect_future.done():
+            logger.error(
+                "NATS ensure_connection called from a running event loop with pending connect future; "
+                "failing fast to avoid blocking the loop"
+            )
+            return False
+
         try:
             self._connect_future.result(timeout=timeout)
         except FutureTimeoutError:
