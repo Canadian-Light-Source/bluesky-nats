@@ -53,6 +53,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.WARNING, handlers=[handler])
     logging.getLogger("bluesky").setLevel(bluesky_log_level)
 
+    # Set up the RunEngine and the NATS publisher,
+    # then execute a simple plan to demonstrate publishing metadata and data to NATS.
     RE = RunEngine({})
     config = NATSClientConfig(servers=["nats://localhost:4222"])
     executor = CoroutineExecutor()
@@ -84,4 +86,5 @@ if __name__ == "__main__":
 
     RE(count(dets))
 
+    # health API is available to check the connection status of the publisher.
     print(f"{nats_publisher.health}")
