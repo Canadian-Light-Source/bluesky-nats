@@ -19,6 +19,8 @@ from ormsgpack import OPT_NAIVE_UTC, OPT_SERIALIZE_NUMPY, packb
 from bluesky_nats.nats_client import NATSClientConfig
 
 
+NATS_TIMEOUT = 10.0
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from uuid import UUID
@@ -96,6 +98,10 @@ class Publisher(ABC):
     @abstractmethod
     def __call__(self, name: str, doc: Any) -> None:
         """Make instances of this Publisher callable."""
+
+    @abstractmethod
+    def close(self, timeout: float = NATS_TIMEOUT) -> bool:
+        """Close publisher resources gracefully."""
 
 
 class NATSPublisher(Publisher):
@@ -175,7 +181,7 @@ class NATSPublisher(Publisher):
         msg = f"NATS strict publish failure: {exception!s}"
         raise RuntimeError(msg) from exception
 
-    def ensure_connection(self, timeout: float = 10.0) -> bool:
+    def ensure_connection(self, timeout: float = NATS_TIMEOUT) -> bool:
         self._start_connect_if_needed()
         if self._connect_future is None:
             return self.nats_client.is_connected and self.js is not None
@@ -220,7 +226,7 @@ class NATSPublisher(Publisher):
         self._record_strict_error(exception)
         logger.debug(f"NATS publish future failed: {exception!s}")
 
-    def flush_publishes(self, timeout: float = 10.0) -> bool:
+    def flush_publishes(self, timeout: float = NATS_TIMEOUT) -> bool:
         deadline = time.monotonic() + timeout
         while True:
             with self._publish_lock:
@@ -233,6 +239,31 @@ class NATSPublisher(Publisher):
                 logger.warning(f"NATS flush timed out with pending={len(pending_futures)}")
                 return False
             pending_futures[0].result(timeout=remaining)
+
+    async def _drain_and_close_nats(self) -> None:
+        if self.nats_client.is_connected:
+            await self.nats_client.drain()
+            return
+        await self.nats_client.close()
+
+    def close(self, timeout: float = NATS_TIMEOUT) -> bool:
+        ok = self.flush_publishes(timeout=timeout)
+
+        try:
+            close_future = self.executor.submit_coroutine(self._drain_and_close_nats())
+            close_future.result(timeout=timeout)
+        except FutureTimeoutError:
+            logger.warning(f"NATS close timed out within {timeout}s")
+            ok = False
+        except Exception:  # noqa: BLE001
+            logger.exception("NATS close failed")
+            ok = False
+        finally:
+            with self._connect_lock:
+                self._connect_future = None
+                self.js = None
+
+        return ok
 
     def update_run_id(self, name: str, doc: dict) -> None:
         if name == "start":

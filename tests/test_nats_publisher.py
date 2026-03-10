@@ -1,6 +1,7 @@
 import asyncio
 from concurrent.futures import Future
 from dataclasses import asdict
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
@@ -10,6 +11,16 @@ from hypothesis.strategies import text, uuids
 from nats.js.errors import NoStreamResponseError
 
 from bluesky_nats.nats_publisher import NATSClientConfig, NATSPublisher
+
+
+class InlineCoroutineExecutor:
+    """Execute submitted coroutines immediately in a local event loop."""
+
+    def submit_coroutine(self, coro):
+        future: Future[None] = Future()
+        asyncio.run(coro)
+        future.set_result(None)
+        return future
 
 
 @pytest.fixture
@@ -299,3 +310,23 @@ def test_call_does_not_raise_after_latched_publish_error_in_non_strict_mode(mock
     publisher._on_publish_done(failed_future)  # noqa: SLF001
 
     publisher("event", {"time": 0})
+
+
+def test_close_drains_connected_client() -> None:
+    """Close drains the NATS client when connected."""
+    publisher = NATSPublisher(executor=InlineCoroutineExecutor())
+    publisher.nats_client = SimpleNamespace(is_connected=True, drain=AsyncMock(), close=AsyncMock())
+
+    assert publisher.close(timeout=1) is True
+    publisher.nats_client.drain.assert_awaited_once()
+    publisher.nats_client.close.assert_not_awaited()
+
+
+def test_close_calls_close_when_disconnected() -> None:
+    """Close calls client close when not connected."""
+    publisher = NATSPublisher(executor=InlineCoroutineExecutor())
+    publisher.nats_client = SimpleNamespace(is_connected=False, drain=AsyncMock(), close=AsyncMock())
+
+    assert publisher.close(timeout=1) is True
+    publisher.nats_client.drain.assert_not_awaited()
+    publisher.nats_client.close.assert_awaited_once()
