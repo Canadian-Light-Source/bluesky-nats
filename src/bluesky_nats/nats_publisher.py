@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -50,7 +51,7 @@ class CoroutineExecutor(Executor):
             msg = f"Expected callable, got {type(fn).__name__}"
             raise TypeError(msg)
         callable_fn = cast("Callable[..., Any]", fn)
-        if asyncio.iscoroutinefunction(callable_fn):
+        if inspect.iscoroutinefunction(callable_fn):
             return self.submit_coroutine(callable_fn(*args, **kwargs))
         return self.loop.run_in_executor(None, callable_fn, *args, **kwargs)
 
