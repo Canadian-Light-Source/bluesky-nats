@@ -326,7 +326,7 @@ class NATSPublisher(Publisher):
         js = await self._get_jetstream()
         try:
             ack = await js.publish(subject=subject, payload=payload, headers=headers)
-            logger.info(f"NATS published: subject={subject}, is_connected={self.nats_client.is_connected}, ack={ack}")
+            logger.debug(f"NATS published: subject={subject}, is_connected={self.nats_client.is_connected}, ack={ack}")
         except NoStreamResponseError:
             logger.exception(
                 f"NATS no stream response: subject={subject}, is_connected={self.nats_client.is_connected}"
