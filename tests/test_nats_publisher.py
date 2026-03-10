@@ -317,7 +317,8 @@ def test_close_drains_connected_client() -> None:
     publisher = NATSPublisher(executor=InlineCoroutineExecutor())
     publisher.nats_client = SimpleNamespace(is_connected=True, drain=AsyncMock(), close=AsyncMock())
 
-    assert publisher.close(timeout=1) is True
+    closed = publisher.close(timeout=1)
+    assert closed is True
     publisher.nats_client.drain.assert_awaited_once()
     publisher.nats_client.close.assert_not_awaited()
 
