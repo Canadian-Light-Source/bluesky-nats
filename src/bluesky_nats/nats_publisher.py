@@ -111,6 +111,8 @@ class NATSPublisher(Publisher):
         executor: CoroutineSubmittingExecutor,
         client_config: NATSClientConfig | None = None,
         subject_factory: Callable[[], str] | str | None = "events.volatile",
+        *,
+        strict_publish: bool = False,
     ) -> None:
         logger.debug(f"new {self.__class__} instance created.")
 
@@ -127,6 +129,9 @@ class NATSPublisher(Publisher):
         self._connect_lock = Lock()
         self._publish_futures: set[Future[Any]] = set()
         self._publish_lock = Lock()
+        self._strict_publish = strict_publish
+        self._strict_error_lock = Lock()
+        self._strict_error: BaseException | None = None
 
         self._subject_factory: str | Callable[[], str] = self.validate_subject_factory(subject_factory)
 
@@ -134,6 +139,8 @@ class NATSPublisher(Publisher):
 
     def __call__(self, name: str, doc: dict) -> None:
         """Make instances of this Publisher callable."""
+        self._raise_if_strict_error()
+
         subject_factory = self._subject_factory
         subject = f"{subject_factory}.{name}" if isinstance(subject_factory, str) else f"{subject_factory()}.{name}"
 
@@ -147,7 +154,26 @@ class NATSPublisher(Publisher):
         with self._publish_lock:
             self._publish_futures.add(publish_future)
         publish_future.add_done_callback(self._on_publish_done)
+        if self._strict_publish and publish_future.done():
+            publish_future.result()
         logger.debug(f"NATS publisher state connected={self.nats_client.is_connected}, js_ready={self.js is not None}")
+
+    def _record_strict_error(self, exception: BaseException) -> None:
+        if not self._strict_publish:
+            return
+        with self._strict_error_lock:
+            if self._strict_error is None:
+                self._strict_error = exception
+
+    def _raise_if_strict_error(self) -> None:
+        if not self._strict_publish:
+            return
+        with self._strict_error_lock:
+            exception = self._strict_error
+        if exception is None:
+            return
+        msg = f"NATS strict publish failure: {exception!s}"
+        raise RuntimeError(msg) from exception
 
     def ensure_connection(self, timeout: float = 10.0) -> bool:
         self._start_connect_if_needed()
@@ -181,6 +207,7 @@ class NATSPublisher(Publisher):
         if exception is None:
             logger.debug(f"NATS connect future done, is_connected={self.nats_client.is_connected}")
             return
+        self._record_strict_error(exception)
         logger.debug(f"NATS connect future failed: {exception!s}")
 
     def _on_publish_done(self, future: Future[Any]) -> None:
@@ -190,6 +217,7 @@ class NATSPublisher(Publisher):
         if exception is None:
             logger.debug("NATS publish future completed")
             return
+        self._record_strict_error(exception)
         logger.debug(f"NATS publish future failed: {exception!s}")
 
     def flush_publishes(self, timeout: float = 10.0) -> bool:

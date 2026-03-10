@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
         if not nats_publisher.ensure_connection(timeout=10):
             logger.error("Failed to connect to NATS")
-            exit(1)
+            sys.exit(1)
 
         RE.subscribe(nats_publisher)
 

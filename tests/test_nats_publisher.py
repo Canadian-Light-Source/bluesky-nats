@@ -16,9 +16,14 @@ from bluesky_nats.nats_publisher import NATSClientConfig, NATSPublisher
 def mock_executor():
     """Fixture to mock the executor's submit method."""
     executor = Mock()
-    future = Mock()
-    future.result.return_value = None
-    executor.submit_coroutine.return_value = future
+
+    def _submit_coroutine(coro):
+        future: Future[None] = Future()
+        coro.close()
+        future.set_result(None)
+        return future
+
+    executor.submit_coroutine.side_effect = _submit_coroutine
     return executor
 
 
@@ -77,9 +82,14 @@ def publisher(mock_executor):
 
 def _build_test_publisher() -> NATSPublisher:
     executor = Mock()
-    future = Mock()
-    future.result.return_value = None
-    executor.submit_coroutine.return_value = future
+
+    def _submit_coroutine(coro):
+        future: Future[None] = Future()
+        coro.close()
+        future.set_result(None)
+        return future
+
+    executor.submit_coroutine.side_effect = _submit_coroutine
     return NATSPublisher(executor=executor)
 
 
@@ -264,3 +274,28 @@ def test_call(publisher, mock_executor):
     publish_coro = mock_executor.submit_coroutine.call_args_list[0].args[0]
     assert asyncio.iscoroutine(publish_coro)
     publish_coro.close()
+
+
+def test_call_raises_after_latched_publish_error_in_strict_mode(mock_executor) -> None:
+    """Strict mode should fail fast in callback path after async publish failure."""
+    publisher = NATSPublisher(executor=mock_executor, strict_publish=True)
+    publisher.run_id = uuid4()
+
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("publish failed"))
+    publisher._on_publish_done(failed_future)  # noqa: SLF001
+
+    with pytest.raises(RuntimeError, match="NATS strict publish failure: publish failed"):
+        publisher("event", {"time": 0})
+
+
+def test_call_does_not_raise_after_latched_publish_error_in_non_strict_mode(mock_executor) -> None:
+    """Non-strict mode keeps previous behavior and does not fail callback path."""
+    publisher = NATSPublisher(executor=mock_executor, strict_publish=False)
+    publisher.run_id = uuid4()
+
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("publish failed"))
+    publisher._on_publish_done(failed_future)  # noqa: SLF001
+
+    publisher("event", {"time": 0})
