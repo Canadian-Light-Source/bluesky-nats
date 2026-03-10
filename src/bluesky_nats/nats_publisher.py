@@ -30,8 +30,7 @@ if TYPE_CHECKING:
 
 
 class CoroutineExecutor(Executor):
-    def __init__(self, loop: asyncio.AbstractEventLoop | None = None) -> None:
-        self.loop = loop
+    def __init__(self) -> None:
         self._io_loop = asyncio.new_event_loop()
         self._io_loop_thread = threading.Thread(target=self._run_io_loop, name="nats-coroutine-executor", daemon=True)
         self._thread_pool = ThreadPoolExecutor()

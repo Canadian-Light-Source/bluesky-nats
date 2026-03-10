@@ -65,6 +65,12 @@ For local setup, use the provided Docker assets:
 
 ## Minimal publisher example
 
+> [!WARNING]
+> Breaking change: `CoroutineExecutor` no longer accepts a `loop` argument.
+> It now always owns a dedicated background thread and event loop for NATS
+> coroutines. Update old code from `CoroutineExecutor(RE.loop)` to
+> `CoroutineExecutor()`.
+
 Attach `NATSPublisher` to a `RunEngine` and publish documents:
 
 ```python
