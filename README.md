@@ -112,6 +112,8 @@ if __name__ == "__main__":
 - Configuration can also be built from JSON/YAML/TOML via
   `NATSClientConfigBuilder.from_file(...)`.
 - Publisher subjects are derived as `<subject_factory>.<document_name>`.
+- Publisher does not pick a stream explicitly; the server maps subjects to streams,
+  while JetStream publish acknowledgements confirm server receipt.
 
 See the `examples/` directory for complete runnable scripts.
 

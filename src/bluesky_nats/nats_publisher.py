@@ -99,13 +99,17 @@ class Publisher(ABC):
 
 
 class NATSPublisher(Publisher):
-    """Publisher class using NATS."""
+    """Publisher class using NATS JetStream publish acknowledgements.
+
+    Messages are published by subject and stream routing is handled by the NATS server
+    configuration. This publisher intentionally does not select a stream directly; it
+    uses JetStream publish to obtain `PubAck` confirmation from the server.
+    """
 
     def __init__(
         self,
         executor: CoroutineSubmittingExecutor,
         client_config: NATSClientConfig | None = None,
-        stream: str | None = "bluesky",
         subject_factory: Callable[[], str] | str | None = "events.volatile",
     ) -> None:
         logger.debug(f"new {self.__class__} instance created.")
@@ -124,7 +128,6 @@ class NATSPublisher(Publisher):
         self._publish_futures: set[Future[Any]] = set()
         self._publish_lock = Lock()
 
-        self._stream = stream
         self._subject_factory: str | Callable[[], str] = self.validate_subject_factory(subject_factory)
 
         self._run_id: UUID

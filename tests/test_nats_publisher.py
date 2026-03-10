@@ -68,9 +68,7 @@ def test_init_rejects_executor_without_submit_coroutine() -> None:
 @pytest.fixture
 def publisher(mock_executor):
     """Fixture to initialize NATSPublisher with mocks."""
-    publisher = NATSPublisher(
-        executor=mock_executor, client_config=NATSClientConfig(), stream="test_stream", subject_factory="test.subject"
-    )
+    publisher = NATSPublisher(executor=mock_executor, client_config=NATSClientConfig(), subject_factory="test.subject")
     publisher.js = AsyncMock()
     publisher.nats_client = Mock(is_connected=True)
     publisher.run_id = uuid4()  # Set a valid run_id
