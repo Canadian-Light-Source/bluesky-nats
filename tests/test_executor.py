@@ -1,4 +1,5 @@
 import asyncio
+import threading
 
 import pytest
 
@@ -47,3 +48,20 @@ def test_shutdown_prevents_new_submissions() -> None:
 
     with pytest.raises(RuntimeError, match="CoroutineExecutor is shut down"):
         executor.submit(lambda: 1)
+
+
+def test_shutdown_called_from_io_loop_thread() -> None:
+    """Shutdown from the IO loop thread should not close a running loop directly."""
+    executor = CoroutineExecutor()
+    finished = threading.Event()
+
+    async def shutdown_on_loop() -> None:
+        executor.shutdown(wait=True)
+        finished.set()
+
+    future = executor.submit_coroutine(shutdown_on_loop())
+    assert finished.wait(timeout=2)
+    future.result(timeout=2)
+
+    executor._io_loop_thread.join(timeout=2)
+    assert not executor._io_loop_thread.is_alive()

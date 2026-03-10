@@ -40,7 +40,11 @@ class CoroutineExecutor(Executor):
 
     def _run_io_loop(self) -> None:
         asyncio.set_event_loop(self._io_loop)
-        self._io_loop.run_forever()
+        try:
+            self._io_loop.run_forever()
+        finally:
+            if not self._io_loop.is_closed():
+                self._io_loop.close()
 
     def submit_coroutine(self, coro: Coroutine[Any, Any, Any]) -> Future[Any]:
         with self._shutdown_lock:
@@ -76,9 +80,6 @@ class CoroutineExecutor(Executor):
 
         if wait and self._io_loop_thread.is_alive() and threading.current_thread() is not self._io_loop_thread:
             self._io_loop_thread.join()
-
-        if not self._io_loop.is_closed():
-            self._io_loop.close()
 
     def close(self) -> None:
         self.shutdown(wait=True)
