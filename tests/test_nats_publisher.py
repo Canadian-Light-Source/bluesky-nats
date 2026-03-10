@@ -1,4 +1,5 @@
 import asyncio
+from concurrent.futures import CancelledError as FutureCancelledError
 from concurrent.futures import Future
 from dataclasses import asdict
 from types import SimpleNamespace
@@ -356,6 +357,52 @@ def test_close_calls_close_when_disconnected() -> None:
     assert publisher.close(timeout=1) is True
     publisher.nats_client.drain.assert_not_awaited()
     publisher.nats_client.close.assert_awaited_once()
+
+
+def test_flush_publishes_returns_false_on_failed_future_and_continues(mock_executor) -> None:
+    """Flush drains all pending futures and reports failure when one publish fails."""
+    publisher = NATSPublisher(executor=mock_executor)
+
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("publish failed"))
+    ok_future: Future[None] = Future()
+    ok_future.set_result(None)
+
+    publisher._publish_futures.add(failed_future)  # noqa: SLF001
+    publisher._publish_futures.add(ok_future)  # noqa: SLF001
+
+    assert publisher.flush_publishes(timeout=1) is False
+    assert not publisher._publish_futures  # noqa: SLF001
+
+
+def test_close_returns_false_when_publish_future_failed(mock_executor) -> None:
+    """Close should return False, not raise, when pending publish futures failed."""
+    publisher = NATSPublisher(executor=InlineCoroutineExecutor())
+    publisher.nats_client = SimpleNamespace(is_connected=False, drain=AsyncMock(), close=AsyncMock())
+
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("publish failed"))
+    publisher._publish_futures.add(failed_future)  # noqa: SLF001
+
+    assert publisher.close(timeout=1) is False
+    publisher.nats_client.close.assert_awaited_once()
+
+
+def test_flush_publishes_returns_false_on_cancelled_future(mock_executor) -> None:
+    """Flush treats cancelled publish futures as failures without raising."""
+    publisher = NATSPublisher(executor=mock_executor)
+
+    cancelled_future: Future[None] = Future()
+    cancelled_future.cancel()
+
+    publisher._publish_futures.add(cancelled_future)  # noqa: SLF001
+
+    assert publisher.flush_publishes(timeout=1) is False
+    assert not publisher._publish_futures  # noqa: SLF001
+
+    health = publisher.health
+    assert health.last_error is not None
+    assert FutureCancelledError.__name__ in health.last_error
 
 
 def test_shutdown_callback_calls_close_and_executor_shutdown(mock_executor, mocker) -> None:

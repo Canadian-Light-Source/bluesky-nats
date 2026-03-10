@@ -5,6 +5,7 @@ import inspect
 import threading
 import time
 from abc import ABC, abstractmethod
+from concurrent.futures import CancelledError as FutureCancelledError
 from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import asdict, dataclass
@@ -267,17 +268,35 @@ class NATSPublisher(Publisher):
 
     def flush_publishes(self, timeout: float = NATS_TIMEOUT) -> bool:
         deadline = time.monotonic() + timeout
+        had_failure = False
         while True:
             with self._publish_lock:
                 pending_futures = list(self._publish_futures)
             if not pending_futures:
                 logger.debug("NATS flush complete: no pending publish futures")
-                return True
+                return not had_failure
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 logger.warning(f"NATS flush timed out with pending={len(pending_futures)}")
                 return False
-            pending_futures[0].result(timeout=remaining)
+            publish_future = pending_futures[0]
+            try:
+                publish_future.result(timeout=remaining)
+                with self._publish_lock:
+                    self._publish_futures.discard(publish_future)
+            except FutureTimeoutError:
+                logger.warning(f"NATS flush timed out waiting for publish completion within {timeout}s")
+                return False
+            except FutureCancelledError as e:
+                had_failure = True
+                self._record_strict_error(e)
+                with self._publish_lock:
+                    self._publish_futures.discard(publish_future)
+            except Exception as e:  # noqa: BLE001
+                had_failure = True
+                self._record_strict_error(e)
+                with self._publish_lock:
+                    self._publish_futures.discard(publish_future)
 
     @property
     def health(self) -> PublisherHealth:

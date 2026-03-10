@@ -63,5 +63,5 @@ def test_shutdown_called_from_io_loop_thread() -> None:
     assert finished.wait(timeout=2)
     future.result(timeout=2)
 
-    executor._io_loop_thread.join(timeout=2)
-    assert not executor._io_loop_thread.is_alive()
+    with pytest.raises(RuntimeError, match="CoroutineExecutor is shut down"):
+        executor.submit(lambda: 1)
