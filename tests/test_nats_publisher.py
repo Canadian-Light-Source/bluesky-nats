@@ -354,7 +354,8 @@ def test_close_calls_close_when_disconnected() -> None:
     publisher = NATSPublisher(executor=InlineCoroutineExecutor())
     publisher.nats_client = SimpleNamespace(is_connected=False, drain=AsyncMock(), close=AsyncMock())
 
-    assert publisher.close(timeout=1) is True
+    closed = publisher.close(timeout=1)
+    assert closed is True
     publisher.nats_client.drain.assert_not_awaited()
     publisher.nats_client.close.assert_awaited_once()
 
