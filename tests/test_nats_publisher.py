@@ -1,6 +1,8 @@
 import asyncio
+from concurrent.futures import CancelledError as FutureCancelledError
 from concurrent.futures import Future
 from dataclasses import asdict
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
@@ -12,13 +14,28 @@ from nats.js.errors import NoStreamResponseError
 from bluesky_nats.nats_publisher import NATSClientConfig, NATSPublisher
 
 
+class InlineCoroutineExecutor:
+    """Execute submitted coroutines immediately in a local event loop."""
+
+    def submit_coroutine(self, coro):
+        future: Future[None] = Future()
+        asyncio.run(coro)
+        future.set_result(None)
+        return future
+
+
 @pytest.fixture
 def mock_executor():
     """Fixture to mock the executor's submit method."""
     executor = Mock()
-    future = Mock()
-    future.result.return_value = None
-    executor.submit_coroutine.return_value = future
+
+    def _submit_coroutine(coro):
+        future: Future[None] = Future()
+        coro.close()
+        future.set_result(None)
+        return future
+
+    executor.submit_coroutine.side_effect = _submit_coroutine
     return executor
 
 
@@ -68,19 +85,23 @@ def test_init_rejects_executor_without_submit_coroutine() -> None:
 @pytest.fixture
 def publisher(mock_executor):
     """Fixture to initialize NATSPublisher with mocks."""
-    publisher = NATSPublisher(
-        executor=mock_executor, client_config=NATSClientConfig(), stream="test_stream", subject_factory="test.subject"
-    )
+    publisher = NATSPublisher(executor=mock_executor, client_config=NATSClientConfig(), subject_factory="test.subject")
     publisher.js = AsyncMock()
+    publisher.nats_client = Mock(is_connected=True)
     publisher.run_id = uuid4()  # Set a valid run_id
     return publisher
 
 
 def _build_test_publisher() -> NATSPublisher:
     executor = Mock()
-    future = Mock()
-    future.result.return_value = None
-    executor.submit_coroutine.return_value = future
+
+    def _submit_coroutine(coro):
+        future: Future[None] = Future()
+        coro.close()
+        future.set_result(None)
+        return future
+
+    executor.submit_coroutine.side_effect = _submit_coroutine
     return NATSPublisher(executor=executor)
 
 
@@ -116,6 +137,73 @@ async def test_ensure_connected_wraps_connection_exception(mock_executor) -> Non
 
 
 @pytest.mark.asyncio
+async def test_ensure_connected_resets_failed_future_for_retry(mock_executor) -> None:
+    """Failed connect futures are cleared so later calls can retry connecting."""
+    publisher = NATSPublisher(executor=mock_executor)
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("connect failed"))
+    publisher._connect_future = failed_future  # noqa: SLF001
+
+    with pytest.raises(ConnectionError, match="connect failed"):
+        await publisher._ensure_connected()  # noqa: SLF001
+
+    assert publisher._connect_future is None  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_ensure_connection_fails_fast_in_running_loop(mock_executor) -> None:
+    """ensure_connection must not block the currently running event loop thread."""
+    publisher = NATSPublisher(executor=mock_executor)
+    pending_future: Future[None] = Future()
+    publisher._connect_future = pending_future  # noqa: SLF001
+
+    connected = publisher.ensure_connection(timeout=10)
+    assert connected is False
+    assert publisher._connect_future is pending_future  # noqa: SLF001
+
+
+def test_ensure_connection_clears_failed_future_for_retry(mock_executor) -> None:
+    """ensure_connection clears failed connect futures so later calls can retry."""
+    publisher = NATSPublisher(executor=mock_executor)
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("connect failed"))
+    publisher._connect_future = failed_future  # noqa: SLF001
+
+    connected = publisher.ensure_connection(timeout=10)
+    assert connected is False
+    assert publisher._connect_future is None  # noqa: SLF001
+
+
+def test_ensure_connection_retries_after_failed_future(mock_executor) -> None:
+    """After a failed connect future, a subsequent ensure_connection schedules connect again."""
+    publisher = NATSPublisher(executor=mock_executor)
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("connect failed"))
+    publisher._connect_future = failed_future  # noqa: SLF001
+
+    connected = publisher.ensure_connection(timeout=10)
+    assert connected is False
+    assert publisher._connect_future is None  # noqa: SLF001
+
+    publisher.ensure_connection(timeout=10)
+    assert mock_executor.submit_coroutine.call_count == 1
+
+
+def test_start_connect_if_needed_submits_when_js_exists_but_disconnected(mock_executor) -> None:
+    """A stale JetStream context must not block reconnect attempts."""
+    publisher = NATSPublisher(executor=mock_executor)
+    publisher.js = AsyncMock()
+    publisher.nats_client = Mock(is_connected=False)
+
+    publisher._start_connect_if_needed()  # noqa: SLF001
+
+    assert mock_executor.submit_coroutine.call_count == 1
+    connect_coro = mock_executor.submit_coroutine.call_args.args[0]
+    assert asyncio.iscoroutine(connect_coro)
+    connect_coro.close()
+
+
+@pytest.mark.asyncio
 async def test_get_jetstream_raises_when_context_missing(mock_executor, mocker) -> None:
     """_get_jetstream fails if no JetStream context is available after connect."""
     publisher = NATSPublisher(executor=mock_executor)
@@ -129,11 +217,14 @@ async def test_get_jetstream_raises_when_context_missing(mock_executor, mocker) 
 @pytest.mark.asyncio
 async def test_connect(mocker, publisher):
     """Test the _connect method of NATSPublisher."""
-    mock_connect = mocker.patch("nats.aio.client.Client.connect", return_value=None)
+    jetstream_context = Mock()
+    publisher.nats_client = Mock(connect=AsyncMock(), jetstream=Mock(return_value=jetstream_context))
     config = NATSClientConfig()
     await publisher._connect(config)  # noqa: SLF001
 
-    mock_connect.assert_called_once_with(**asdict(config))
+    publisher.nats_client.connect.assert_called_once_with(**asdict(config))
+    publisher.nats_client.jetstream.assert_called_once_with()
+    assert publisher.js is jetstream_context
 
 
 @pytest.mark.asyncio
@@ -223,3 +314,162 @@ def test_call(publisher, mock_executor):
     publish_coro = mock_executor.submit_coroutine.call_args_list[0].args[0]
     assert asyncio.iscoroutine(publish_coro)
     publish_coro.close()
+
+
+def test_call_raises_after_latched_publish_error_in_strict_mode(mock_executor) -> None:
+    """Strict mode should fail fast in callback path after async publish failure."""
+    publisher = NATSPublisher(executor=mock_executor, strict_publish=True)
+    publisher.run_id = uuid4()
+
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("publish failed"))
+    publisher._on_publish_done(failed_future)  # noqa: SLF001
+
+    with pytest.raises(RuntimeError, match="NATS strict publish failure: publish failed"):
+        publisher("event", {"time": 0})
+
+
+def test_call_does_not_raise_after_latched_publish_error_in_non_strict_mode(mock_executor) -> None:
+    """Non-strict mode keeps previous behavior and does not fail callback path."""
+    publisher = NATSPublisher(executor=mock_executor, strict_publish=False)
+    publisher.run_id = uuid4()
+
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("publish failed"))
+    publisher._on_publish_done(failed_future)  # noqa: SLF001
+
+    publisher("event", {"time": 0})
+
+
+def test_close_drains_connected_client() -> None:
+    """Close drains the NATS client when connected."""
+    publisher = NATSPublisher(executor=InlineCoroutineExecutor())
+    publisher.nats_client = SimpleNamespace(is_connected=True, drain=AsyncMock(), close=AsyncMock())
+
+    closed = publisher.close(timeout=1)
+    assert closed is True
+    publisher.nats_client.drain.assert_awaited_once()
+    publisher.nats_client.close.assert_not_awaited()
+
+
+def test_close_calls_close_when_disconnected() -> None:
+    """Close calls client close when not connected."""
+    publisher = NATSPublisher(executor=InlineCoroutineExecutor())
+    publisher.nats_client = SimpleNamespace(is_connected=False, drain=AsyncMock(), close=AsyncMock())
+
+    closed = publisher.close(timeout=1)
+    assert closed is True
+    publisher.nats_client.drain.assert_not_awaited()
+    publisher.nats_client.close.assert_awaited_once()
+
+
+def test_flush_publishes_returns_false_on_failed_future_and_continues(mock_executor) -> None:
+    """Flush drains all pending futures and reports failure when one publish fails."""
+    publisher = NATSPublisher(executor=mock_executor)
+
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("publish failed"))
+    ok_future: Future[None] = Future()
+    ok_future.set_result(None)
+
+    publisher._publish_futures.add(failed_future)  # noqa: SLF001
+    publisher._publish_futures.add(ok_future)  # noqa: SLF001
+
+    flushed = publisher.flush_publishes(timeout=1)
+    assert flushed is False
+    assert not publisher._publish_futures  # noqa: SLF001
+
+
+def test_close_returns_false_when_publish_future_failed(mock_executor) -> None:
+    """Close should return False, not raise, when pending publish futures failed."""
+    publisher = NATSPublisher(executor=InlineCoroutineExecutor())
+    publisher.nats_client = SimpleNamespace(is_connected=False, drain=AsyncMock(), close=AsyncMock())
+
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("publish failed"))
+    publisher._publish_futures.add(failed_future)  # noqa: SLF001
+
+    closed = publisher.close(timeout=1)
+    assert closed is False
+    publisher.nats_client.close.assert_awaited_once()
+
+
+def test_flush_publishes_returns_false_on_cancelled_future(mock_executor) -> None:
+    """Flush treats cancelled publish futures as failures without raising."""
+    publisher = NATSPublisher(executor=mock_executor)
+
+    cancelled_future: Future[None] = Future()
+    cancelled_future.cancel()
+
+    publisher._publish_futures.add(cancelled_future)  # noqa: SLF001
+
+    flushed = publisher.flush_publishes(timeout=1)
+    assert flushed is False
+    assert not publisher._publish_futures  # noqa: SLF001
+
+    health = publisher.health
+    assert health.last_error is not None
+    assert FutureCancelledError.__name__ in health.last_error
+
+
+def test_shutdown_callback_calls_close_and_executor_shutdown(mock_executor, mocker) -> None:
+    """Shutdown callback closes publisher and optionally shuts down executor."""
+    publisher = NATSPublisher(executor=mock_executor)
+    close_mock = mocker.patch.object(publisher, "close", return_value=True)
+
+    callback = publisher.shutdown_callback(timeout=3, shutdown_executor=True)
+    callback()
+
+    close_mock.assert_called_once_with(timeout=3)
+    mock_executor.shutdown.assert_called_once_with()
+
+
+def test_shutdown_callback_skips_executor_shutdown_by_default(mock_executor, mocker) -> None:
+    """Shutdown callback does not shut down executor unless requested."""
+    publisher = NATSPublisher(executor=mock_executor)
+    close_mock = mocker.patch.object(publisher, "close", return_value=True)
+
+    callback = publisher.shutdown_callback(timeout=2)
+    callback()
+
+    close_mock.assert_called_once_with(timeout=2)
+    mock_executor.shutdown.assert_not_called()
+
+
+def test_status_defaults(mock_executor) -> None:
+    """Health snapshot reports defaults before connect/publish."""
+    publisher = NATSPublisher(executor=mock_executor)
+
+    health = publisher.health
+
+    assert health.connected is False
+    assert health.strict_publish is False
+    assert health.pending_publishes == 0
+    assert health.last_error is None
+    assert health.last_error_at is None
+    assert health.last_ack_at is None
+    assert health.last_subject is None
+
+
+def test_status_reports_last_error(mock_executor) -> None:
+    """Health snapshot exposes the last recorded publisher error."""
+    publisher = NATSPublisher(executor=mock_executor, strict_publish=True)
+    publisher._record_strict_error(RuntimeError("boom"))  # noqa: SLF001
+
+    health = publisher.health
+
+    assert health.strict_publish is True
+    assert health.last_error is not None
+    assert "RuntimeError: boom" in health.last_error
+    assert health.last_error_at is not None
+
+
+@pytest.mark.asyncio
+async def test_status_updates_on_publish_ack(publisher) -> None:
+    """Successful publish updates ack and subject fields in health snapshot."""
+    await publisher.publish(subject="health.subject", payload=b"test", headers={})
+
+    health = publisher.health
+
+    assert health.last_subject == "health.subject"
+    assert health.last_ack_at is not None
