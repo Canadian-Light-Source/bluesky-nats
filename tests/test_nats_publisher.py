@@ -169,11 +169,14 @@ async def test_get_jetstream_raises_when_context_missing(mock_executor, mocker) 
 @pytest.mark.asyncio
 async def test_connect(mocker, publisher):
     """Test the _connect method of NATSPublisher."""
-    publisher.nats_client = AsyncMock()
+    jetstream_context = Mock()
+    publisher.nats_client = Mock(connect=AsyncMock(), jetstream=Mock(return_value=jetstream_context))
     config = NATSClientConfig()
     await publisher._connect(config)  # noqa: SLF001
 
     publisher.nats_client.connect.assert_called_once_with(**asdict(config))
+    publisher.nats_client.jetstream.assert_called_once_with()
+    assert publisher.js is jetstream_context
 
 
 @pytest.mark.asyncio
