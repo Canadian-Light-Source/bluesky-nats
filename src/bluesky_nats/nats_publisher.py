@@ -7,7 +7,7 @@ import time
 from abc import ABC, abstractmethod
 from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from threading import Lock
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
@@ -88,6 +88,17 @@ class CoroutineSubmittingExecutor(Protocol):
     def submit_coroutine(self, coro: Coroutine[Any, Any, Any]) -> Future[Any]: ...
 
 
+@dataclass(frozen=True)
+class PublisherHealth:
+    connected: bool
+    strict_publish: bool
+    pending_publishes: int
+    last_error: str | None
+    last_error_at: float | None
+    last_ack_at: float | None
+    last_subject: str | None
+
+
 class Publisher(ABC):
     """Abstract Publisher."""
 
@@ -138,6 +149,11 @@ class NATSPublisher(Publisher):
         self._strict_publish = strict_publish
         self._strict_error_lock = Lock()
         self._strict_error: BaseException | None = None
+        self._health_lock = Lock()
+        self._last_error: str | None = None
+        self._last_error_at: float | None = None
+        self._last_ack_at: float | None = None
+        self._last_subject: str | None = None
 
         self._subject_factory: str | Callable[[], str] = self.validate_subject_factory(subject_factory)
 
@@ -149,6 +165,9 @@ class NATSPublisher(Publisher):
 
         subject_factory = self._subject_factory
         subject = f"{subject_factory}.{name}" if isinstance(subject_factory, str) else f"{subject_factory()}.{name}"
+
+        with self._health_lock:
+            self._last_subject = subject
 
         self.update_run_id(name, doc)
         # TODO: maybe worthwhile refactoring to a header factory for higher flexibility.  # noqa: TD002, TD003
@@ -165,11 +184,20 @@ class NATSPublisher(Publisher):
         logger.debug(f"NATS publisher state connected={self.nats_client.is_connected}, js_ready={self.js is not None}")
 
     def _record_strict_error(self, exception: BaseException) -> None:
+        with self._health_lock:
+            self._last_error = f"{type(exception).__name__}: {exception!s}"
+            self._last_error_at = time.time()
+
         if not self._strict_publish:
             return
         with self._strict_error_lock:
             if self._strict_error is None:
                 self._strict_error = exception
+
+    def _record_publish_ack(self, subject: str) -> None:
+        with self._health_lock:
+            self._last_subject = subject
+            self._last_ack_at = time.time()
 
     def _raise_if_strict_error(self) -> None:
         if not self._strict_publish:
@@ -239,6 +267,26 @@ class NATSPublisher(Publisher):
                 logger.warning(f"NATS flush timed out with pending={len(pending_futures)}")
                 return False
             pending_futures[0].result(timeout=remaining)
+
+    @property
+    def health(self) -> PublisherHealth:
+        with self._publish_lock:
+            pending_publishes = len(self._publish_futures)
+        with self._health_lock:
+            last_error = self._last_error
+            last_error_at = self._last_error_at
+            last_ack_at = self._last_ack_at
+            last_subject = self._last_subject
+        connected = self.nats_client.is_connected and self.js is not None
+        return PublisherHealth(
+            connected=connected,
+            strict_publish=self._strict_publish,
+            pending_publishes=pending_publishes,
+            last_error=last_error,
+            last_error_at=last_error_at,
+            last_ack_at=last_ack_at,
+            last_subject=last_subject,
+        )
 
     async def _drain_and_close_nats(self) -> None:
         if self.nats_client.is_connected:
@@ -326,12 +374,15 @@ class NATSPublisher(Publisher):
         js = await self._get_jetstream()
         try:
             ack = await js.publish(subject=subject, payload=payload, headers=headers)
+            self._record_publish_ack(subject)
             logger.debug(f"NATS published: subject={subject}, is_connected={self.nats_client.is_connected}, ack={ack}")
-        except NoStreamResponseError:
+        except NoStreamResponseError as e:
+            self._record_strict_error(e)
             logger.exception(
                 f"NATS no stream response: subject={subject}, is_connected={self.nats_client.is_connected}"
             )
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            self._record_strict_error(e)
             logger.exception(f"NATS publish failed: subject={subject}, is_connected={self.nats_client.is_connected}")
 
     @staticmethod

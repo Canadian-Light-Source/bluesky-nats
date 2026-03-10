@@ -330,3 +330,42 @@ def test_close_calls_close_when_disconnected() -> None:
     assert publisher.close(timeout=1) is True
     publisher.nats_client.drain.assert_not_awaited()
     publisher.nats_client.close.assert_awaited_once()
+
+
+def test_status_defaults(mock_executor) -> None:
+    """Health snapshot reports defaults before connect/publish."""
+    publisher = NATSPublisher(executor=mock_executor)
+
+    health = publisher.health
+
+    assert health.connected is False
+    assert health.strict_publish is False
+    assert health.pending_publishes == 0
+    assert health.last_error is None
+    assert health.last_error_at is None
+    assert health.last_ack_at is None
+    assert health.last_subject is None
+
+
+def test_status_reports_last_error(mock_executor) -> None:
+    """Health snapshot exposes the last recorded publisher error."""
+    publisher = NATSPublisher(executor=mock_executor, strict_publish=True)
+    publisher._record_strict_error(RuntimeError("boom"))  # noqa: SLF001
+
+    health = publisher.health
+
+    assert health.strict_publish is True
+    assert health.last_error is not None
+    assert "RuntimeError: boom" in health.last_error
+    assert health.last_error_at is not None
+
+
+@pytest.mark.asyncio
+async def test_status_updates_on_publish_ack(publisher) -> None:
+    """Successful publish updates ack and subject fields in health snapshot."""
+    await publisher.publish(subject="health.subject", payload=b"test", headers={})
+
+    health = publisher.health
+
+    assert health.last_subject == "health.subject"
+    assert health.last_ack_at is not None
