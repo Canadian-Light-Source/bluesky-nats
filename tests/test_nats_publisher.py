@@ -160,6 +160,31 @@ async def test_ensure_connection_fails_fast_in_running_loop(mock_executor) -> No
     assert publisher._connect_future is pending_future  # noqa: SLF001
 
 
+def test_ensure_connection_clears_failed_future_for_retry(mock_executor) -> None:
+    """ensure_connection clears failed connect futures so later calls can retry."""
+    publisher = NATSPublisher(executor=mock_executor)
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("connect failed"))
+    publisher._connect_future = failed_future  # noqa: SLF001
+
+    assert publisher.ensure_connection(timeout=10) is False
+    assert publisher._connect_future is None  # noqa: SLF001
+
+
+def test_ensure_connection_retries_after_failed_future(mock_executor) -> None:
+    """After a failed connect future, a subsequent ensure_connection schedules connect again."""
+    publisher = NATSPublisher(executor=mock_executor)
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("connect failed"))
+    publisher._connect_future = failed_future  # noqa: SLF001
+
+    assert publisher.ensure_connection(timeout=10) is False
+    assert publisher._connect_future is None  # noqa: SLF001
+
+    publisher.ensure_connection(timeout=10)
+    assert mock_executor.submit_coroutine.call_count == 1
+
+
 def test_start_connect_if_needed_submits_when_js_exists_but_disconnected(mock_executor) -> None:
     """A stale JetStream context must not block reconnect attempts."""
     publisher = NATSPublisher(executor=mock_executor)
