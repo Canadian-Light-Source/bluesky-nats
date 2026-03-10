@@ -38,3 +38,12 @@ async def test_submit_non_callable():
     executor = CoroutineExecutor(asyncio.get_running_loop())
     with pytest.raises(TypeError, match="Expected callable"):
         executor.submit(123)  # pyright: ignore[reportArgumentType]
+
+
+def test_shutdown_prevents_new_submissions() -> None:
+    """Executor rejects new work after shutdown."""
+    executor = CoroutineExecutor()
+    executor.shutdown()
+
+    with pytest.raises(RuntimeError, match="CoroutineExecutor is shut down"):
+        executor.submit(lambda: 1)

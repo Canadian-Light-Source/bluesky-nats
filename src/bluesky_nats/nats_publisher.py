@@ -5,7 +5,7 @@ import inspect
 import threading
 import time
 from abc import ABC, abstractmethod
-from concurrent.futures import Executor, Future
+from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import asdict
 from threading import Lock
@@ -27,24 +27,26 @@ if TYPE_CHECKING:
 
 
 class CoroutineExecutor(Executor):
-    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+    def __init__(self, loop: asyncio.AbstractEventLoop | None = None) -> None:
         self.loop = loop
-        self._fallback_loop = asyncio.new_event_loop()
-        self._fallback_loop_thread = threading.Thread(
-            target=self._run_fallback_loop, name="nats-coroutine-executor", daemon=True
-        )
-        self._fallback_loop_thread.start()
+        self._io_loop = asyncio.new_event_loop()
+        self._io_loop_thread = threading.Thread(target=self._run_io_loop, name="nats-coroutine-executor", daemon=True)
+        self._thread_pool = ThreadPoolExecutor()
+        self._shutdown_lock = Lock()
+        self._is_shutdown = False
+        self._io_loop_thread.start()
 
-    def _run_fallback_loop(self) -> None:
-        asyncio.set_event_loop(self._fallback_loop)
-        self._fallback_loop.run_forever()
+    def _run_io_loop(self) -> None:
+        asyncio.set_event_loop(self._io_loop)
+        self._io_loop.run_forever()
 
     def submit_coroutine(self, coro: Coroutine[Any, Any, Any]) -> Future[Any]:
-        logger.debug(f"NATS executor submit_coroutine called, loop_running={self.loop.is_running()}")
-        if self.loop.is_running():
-            return asyncio.run_coroutine_threadsafe(coro, self.loop)
-        logger.debug("NATS executor loop not running, using fallback background event loop")
-        return asyncio.run_coroutine_threadsafe(coro, self._fallback_loop)
+        with self._shutdown_lock:
+            if self._is_shutdown:
+                coro.close()
+                msg = "CoroutineExecutor is shut down"
+                raise RuntimeError(msg)
+        return asyncio.run_coroutine_threadsafe(coro, self._io_loop)
 
     def submit(self, fn: object, *args, **kwargs) -> Any:  # noqa: ANN002
         if not callable(fn):
@@ -53,7 +55,31 @@ class CoroutineExecutor(Executor):
         callable_fn = cast("Callable[..., Any]", fn)
         if inspect.iscoroutinefunction(callable_fn):
             return self.submit_coroutine(callable_fn(*args, **kwargs))
-        return self.loop.run_in_executor(None, callable_fn, *args, **kwargs)
+        with self._shutdown_lock:
+            if self._is_shutdown:
+                msg = "CoroutineExecutor is shut down"
+                raise RuntimeError(msg)
+        return self._thread_pool.submit(callable_fn, *args, **kwargs)
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        with self._shutdown_lock:
+            if self._is_shutdown:
+                return
+            self._is_shutdown = True
+
+        self._thread_pool.shutdown(wait=wait, cancel_futures=cancel_futures)
+
+        if self._io_loop.is_running():
+            self._io_loop.call_soon_threadsafe(self._io_loop.stop)
+
+        if wait and self._io_loop_thread.is_alive() and threading.current_thread() is not self._io_loop_thread:
+            self._io_loop_thread.join()
+
+        if not self._io_loop.is_closed():
+            self._io_loop.close()
+
+    def close(self) -> None:
+        self.shutdown(wait=True)
 
 
 class CoroutineSubmittingExecutor(Protocol):

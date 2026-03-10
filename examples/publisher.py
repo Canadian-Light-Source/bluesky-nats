@@ -54,28 +54,30 @@ if __name__ == "__main__":
 
     RE = RunEngine({})
     config = NATSClientConfig(servers=["nats://localhost:4222"])
+    executor = CoroutineExecutor()
 
-    nats_publisher = NATSPublisher(
-        client_config=config, executor=CoroutineExecutor(RE.loop), subject_factory="events.nats-bluesky"
-    )
+    try:
+        nats_publisher = NATSPublisher(client_config=config, executor=executor, subject_factory="events.nats-bluesky")
 
-    if not nats_publisher.ensure_connection(timeout=10):
-        logger.error("Failed to connect to NATS")
-        sys.exit(1)
+        if not nats_publisher.ensure_connection(timeout=10):
+            logger.error("Failed to connect to NATS")
+            exit(1)
 
-    RE.subscribe(nats_publisher)
+        RE.subscribe(nats_publisher)
 
-    from bluesky.callbacks.best_effort import BestEffortCallback
+        from bluesky.callbacks.best_effort import BestEffortCallback
 
-    bec = BestEffortCallback()
-    bec.disable_plots()
+        bec = BestEffortCallback()
+        bec.disable_plots()
 
-    # Send all metadata/data captured to the BestEffortCallback.
-    RE.subscribe(bec)
+        # Send all metadata/data captured to the BestEffortCallback.
+        RE.subscribe(bec)
 
-    from bluesky.plans import count
-    from ophyd.sim import det1  # type: ignore  # noqa: PGH003
+        from bluesky.plans import count
+        from ophyd.sim import det1  # type: ignore  # noqa: PGH003
 
-    dets = [det1]  # a list of any number of detectors
+        dets = [det1]  # a list of any number of detectors
 
-    RE(count(dets))
+        RE(count(dets))
+    finally:
+        executor.shutdown()
