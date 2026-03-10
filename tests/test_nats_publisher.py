@@ -72,6 +72,7 @@ def publisher(mock_executor):
         executor=mock_executor, client_config=NATSClientConfig(), stream="test_stream", subject_factory="test.subject"
     )
     publisher.js = AsyncMock()
+    publisher.nats_client = Mock(is_connected=True)
     publisher.run_id = uuid4()  # Set a valid run_id
     return publisher
 
@@ -116,6 +117,34 @@ async def test_ensure_connected_wraps_connection_exception(mock_executor) -> Non
 
 
 @pytest.mark.asyncio
+async def test_ensure_connected_resets_failed_future_for_retry(mock_executor) -> None:
+    """Failed connect futures are cleared so later calls can retry connecting."""
+    publisher = NATSPublisher(executor=mock_executor)
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(RuntimeError("connect failed"))
+    publisher._connect_future = failed_future  # noqa: SLF001
+
+    with pytest.raises(ConnectionError, match="connect failed"):
+        await publisher._ensure_connected()  # noqa: SLF001
+
+    assert publisher._connect_future is None  # noqa: SLF001
+
+
+def test_start_connect_if_needed_submits_when_js_exists_but_disconnected(mock_executor) -> None:
+    """A stale JetStream context must not block reconnect attempts."""
+    publisher = NATSPublisher(executor=mock_executor)
+    publisher.js = AsyncMock()
+    publisher.nats_client = Mock(is_connected=False)
+
+    publisher._start_connect_if_needed()  # noqa: SLF001
+
+    assert mock_executor.submit_coroutine.call_count == 1
+    connect_coro = mock_executor.submit_coroutine.call_args.args[0]
+    assert asyncio.iscoroutine(connect_coro)
+    connect_coro.close()
+
+
+@pytest.mark.asyncio
 async def test_get_jetstream_raises_when_context_missing(mock_executor, mocker) -> None:
     """_get_jetstream fails if no JetStream context is available after connect."""
     publisher = NATSPublisher(executor=mock_executor)
@@ -129,11 +158,11 @@ async def test_get_jetstream_raises_when_context_missing(mock_executor, mocker) 
 @pytest.mark.asyncio
 async def test_connect(mocker, publisher):
     """Test the _connect method of NATSPublisher."""
-    mock_connect = mocker.patch("nats.aio.client.Client.connect", return_value=None)
+    publisher.nats_client = AsyncMock()
     config = NATSClientConfig()
     await publisher._connect(config)  # noqa: SLF001
 
-    mock_connect.assert_called_once_with(**asdict(config))
+    publisher.nats_client.connect.assert_called_once_with(**asdict(config))
 
 
 @pytest.mark.asyncio
