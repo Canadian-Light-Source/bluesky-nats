@@ -1,3 +1,4 @@
+import atexit
 import logging
 import os
 import sys
@@ -55,35 +56,38 @@ if __name__ == "__main__":
     RE = RunEngine({})
     config = NATSClientConfig(servers=["nats://localhost:4222"])
     executor = CoroutineExecutor()
+    nats_publisher = NATSPublisher(
+        client_config=config, executor=executor, subject_factory="events.nats-bluesky", strict_publish=True
+    )
 
-    try:
-        nats_publisher = NATSPublisher(
-            client_config=config, executor=executor, subject_factory="events.nats-bluesky", strict_publish=True
-        )
+    def _shutdown_nats_publisher() -> None:
+        try:
+            nats_publisher.close()
+        finally:
+            executor.shutdown()
 
-        # Fail fast before executing any plans: publishing is mandatory in this setup.
-        if not nats_publisher.ensure_connection(timeout=10):
-            logger.error("Failed to connect to NATS")
-            sys.exit(1)
+    atexit.register(_shutdown_nats_publisher)
 
-        RE.subscribe(nats_publisher)
+    # Fail fast before executing any plans: publishing is mandatory in this setup.
+    if not nats_publisher.ensure_connection(timeout=10):
+        logger.error("Failed to connect to NATS")
+        sys.exit(1)
 
-        from bluesky.callbacks.best_effort import BestEffortCallback
+    RE.subscribe(nats_publisher)
 
-        bec = BestEffortCallback()
-        bec.disable_plots()
+    from bluesky.callbacks.best_effort import BestEffortCallback
 
-        # Send all metadata/data captured to the BestEffortCallback.
-        RE.subscribe(bec)
+    bec = BestEffortCallback()
+    bec.disable_plots()
 
-        from bluesky.plans import count
-        from ophyd.sim import det1  # type: ignore  # noqa: PGH003
+    # Send all metadata/data captured to the BestEffortCallback.
+    RE.subscribe(bec)
 
-        dets = [det1]  # a list of any number of detectors
+    from bluesky.plans import count
+    from ophyd.sim import det1  # type: ignore  # noqa: PGH003
 
-        RE(count(dets))
+    dets = [det1]  # a list of any number of detectors
 
-        print(f"{nats_publisher.health}")
+    RE(count(dets))
 
-    finally:
-        executor.shutdown()
+    print(f"{nats_publisher.health}")
