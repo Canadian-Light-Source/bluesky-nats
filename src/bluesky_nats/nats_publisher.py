@@ -61,7 +61,7 @@ class CoroutineExecutor(Executor):
                 raise RuntimeError(msg)
         return self._thread_pool.submit(callable_fn, *args, **kwargs)
 
-    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:  # noqa: FBT001, FBT002
         with self._shutdown_lock:
             if self._is_shutdown:
                 return
