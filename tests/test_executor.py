@@ -1,5 +1,6 @@
 import asyncio
 import threading
+from typing import Any, cast
 
 import pytest
 
@@ -60,7 +61,8 @@ def test_shutdown_called_from_io_loop_thread() -> None:
         finished.set()
 
     future = executor.submit_coroutine(shutdown_on_loop())
-    assert finished.wait(timeout=2)
+    did_finish = finished.wait(timeout=2)
+    assert did_finish
     future.result(timeout=2)
 
     with pytest.raises(RuntimeError, match="CoroutineExecutor is shut down"):
@@ -71,6 +73,7 @@ def test_shutdown_called_from_io_loop_thread() -> None:
 async def test_constructor_rejects_removed_loop_argument() -> None:
     """The loop argument was removed to enforce isolated executor event-loop ownership."""
     running_loop = asyncio.get_running_loop()
+    executor_ctor = cast("Any", CoroutineExecutor)
 
     with pytest.raises(TypeError):
-        CoroutineExecutor(running_loop)
+        executor_ctor(running_loop)

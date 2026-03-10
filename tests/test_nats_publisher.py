@@ -157,7 +157,8 @@ async def test_ensure_connection_fails_fast_in_running_loop(mock_executor) -> No
     pending_future: Future[None] = Future()
     publisher._connect_future = pending_future  # noqa: SLF001
 
-    assert publisher.ensure_connection(timeout=10) is False
+    connected = publisher.ensure_connection(timeout=10)
+    assert connected is False
     assert publisher._connect_future is pending_future  # noqa: SLF001
 
 
@@ -168,7 +169,8 @@ def test_ensure_connection_clears_failed_future_for_retry(mock_executor) -> None
     failed_future.set_exception(RuntimeError("connect failed"))
     publisher._connect_future = failed_future  # noqa: SLF001
 
-    assert publisher.ensure_connection(timeout=10) is False
+    connected = publisher.ensure_connection(timeout=10)
+    assert connected is False
     assert publisher._connect_future is None  # noqa: SLF001
 
 
@@ -179,7 +181,8 @@ def test_ensure_connection_retries_after_failed_future(mock_executor) -> None:
     failed_future.set_exception(RuntimeError("connect failed"))
     publisher._connect_future = failed_future  # noqa: SLF001
 
-    assert publisher.ensure_connection(timeout=10) is False
+    connected = publisher.ensure_connection(timeout=10)
+    assert connected is False
     assert publisher._connect_future is None  # noqa: SLF001
 
     publisher.ensure_connection(timeout=10)
@@ -372,7 +375,8 @@ def test_flush_publishes_returns_false_on_failed_future_and_continues(mock_execu
     publisher._publish_futures.add(failed_future)  # noqa: SLF001
     publisher._publish_futures.add(ok_future)  # noqa: SLF001
 
-    assert publisher.flush_publishes(timeout=1) is False
+    flushed = publisher.flush_publishes(timeout=1)
+    assert flushed is False
     assert not publisher._publish_futures  # noqa: SLF001
 
 
@@ -385,7 +389,8 @@ def test_close_returns_false_when_publish_future_failed(mock_executor) -> None:
     failed_future.set_exception(RuntimeError("publish failed"))
     publisher._publish_futures.add(failed_future)  # noqa: SLF001
 
-    assert publisher.close(timeout=1) is False
+    closed = publisher.close(timeout=1)
+    assert closed is False
     publisher.nats_client.close.assert_awaited_once()
 
 
@@ -398,7 +403,8 @@ def test_flush_publishes_returns_false_on_cancelled_future(mock_executor) -> Non
 
     publisher._publish_futures.add(cancelled_future)  # noqa: SLF001
 
-    assert publisher.flush_publishes(timeout=1) is False
+    flushed = publisher.flush_publishes(timeout=1)
+    assert flushed is False
     assert not publisher._publish_futures  # noqa: SLF001
 
     health = publisher.health
