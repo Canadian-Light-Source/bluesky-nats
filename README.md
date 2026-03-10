@@ -76,12 +76,17 @@ from bluesky_nats.nats_publisher import CoroutineExecutor, NATSPublisher
 if __name__ == "__main__":
     RE = RunEngine({})
     config = NATSClientConfig(servers=["nats://localhost:4222"])
+    executor = CoroutineExecutor()
 
     nats_publisher = NATSPublisher(
         client_config=config,
-        executor=CoroutineExecutor(RE.loop),
+        executor=executor,
         subject_factory="events.nats-bluesky",
+        strict_publish=True,
     )
+
+if not nats_publisher.ensure_connection(timeout=10):
+    raise RuntimeError("NATS connection is required before starting plans")
 
     RE.subscribe(nats_publisher)
 ```
@@ -114,6 +119,17 @@ if __name__ == "__main__":
 - Publisher subjects are derived as `<subject_factory>.<document_name>`.
 - Publisher does not pick a stream explicitly; the server maps subjects to streams,
   while JetStream publish acknowledgements confirm server receipt.
+- `strict_publish=True` enables fail-fast behavior: async publish/connect failures are
+  latched and raised on subsequent callback calls.
+
+## Strict mode
+
+Use strict mode when message delivery is mandatory for your architecture.
+
+- Set `strict_publish=True` on `NATSPublisher`.
+- Call `ensure_connection(...)` before running plans to gate execution.
+- If async publish/connect fails later, strict mode raises `RuntimeError` from the
+  callback path so the RunEngine can fail fast.
 
 See the `examples/` directory for complete runnable scripts.
 

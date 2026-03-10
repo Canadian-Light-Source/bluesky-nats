@@ -57,8 +57,11 @@ if __name__ == "__main__":
     executor = CoroutineExecutor()
 
     try:
-        nats_publisher = NATSPublisher(client_config=config, executor=executor, subject_factory="events.nats-bluesky")
+        nats_publisher = NATSPublisher(
+            client_config=config, executor=executor, subject_factory="events.nats-bluesky", strict_publish=True
+        )
 
+        # Fail fast before executing any plans: publishing is mandatory in this setup.
         if not nats_publisher.ensure_connection(timeout=10):
             logger.error("Failed to connect to NATS")
             sys.exit(1)
