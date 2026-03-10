@@ -332,6 +332,30 @@ def test_close_calls_close_when_disconnected() -> None:
     publisher.nats_client.close.assert_awaited_once()
 
 
+def test_shutdown_callback_calls_close_and_executor_shutdown(mock_executor, mocker) -> None:
+    """Shutdown callback closes publisher and optionally shuts down executor."""
+    publisher = NATSPublisher(executor=mock_executor)
+    close_mock = mocker.patch.object(publisher, "close", return_value=True)
+
+    callback = publisher.shutdown_callback(timeout=3, shutdown_executor=True)
+    callback()
+
+    close_mock.assert_called_once_with(timeout=3)
+    mock_executor.shutdown.assert_called_once_with()
+
+
+def test_shutdown_callback_skips_executor_shutdown_by_default(mock_executor, mocker) -> None:
+    """Shutdown callback does not shut down executor unless requested."""
+    publisher = NATSPublisher(executor=mock_executor)
+    close_mock = mocker.patch.object(publisher, "close", return_value=True)
+
+    callback = publisher.shutdown_callback(timeout=2)
+    callback()
+
+    close_mock.assert_called_once_with(timeout=2)
+    mock_executor.shutdown.assert_not_called()
+
+
 def test_status_defaults(mock_executor) -> None:
     """Health snapshot reports defaults before connect/publish."""
     publisher = NATSPublisher(executor=mock_executor)

@@ -85,10 +85,20 @@ if __name__ == "__main__":
         strict_publish=True,
     )
 
-if not nats_publisher.ensure_connection(timeout=10):
-    raise RuntimeError("NATS connection is required before starting plans")
+    if not nats_publisher.ensure_connection(timeout=10):
+        raise RuntimeError("NATS connection is required before starting plans")
 
     RE.subscribe(nats_publisher)
+
+    # Optional: expose current publisher status snapshot
+    print(nats_publisher.health)
+
+    # Optional: register lifecycle cleanup (useful for interactive sessions)
+    import atexit
+
+    atexit.register(
+        nats_publisher.shutdown_callback(timeout=10, shutdown_executor=True)
+    )
 ```
 
 ## Minimal dispatcher/consumer example
@@ -121,6 +131,10 @@ if __name__ == "__main__":
   while JetStream publish acknowledgements confirm server receipt.
 - `strict_publish=True` enables fail-fast behavior: async publish/connect failures are
   latched and raised on subsequent callback calls.
+- `publisher.health` returns a `PublisherHealth` snapshot (connectivity, pending publishes,
+  last error/ack, and last subject).
+- `publisher.shutdown_callback(...)` returns a zero-arg callable suitable for
+  `atexit.register(...)`.
 
 ## Strict mode
 

@@ -313,6 +313,23 @@ class NATSPublisher(Publisher):
 
         return ok
 
+    def shutdown_callback(
+        self, *, timeout: float = NATS_TIMEOUT, shutdown_executor: bool = False
+    ) -> Callable[[], None]:
+        close_method = self.close
+        executor = self.executor
+
+        def _shutdown_callback() -> None:
+            try:
+                close_method(timeout=timeout)
+            finally:
+                if shutdown_executor:
+                    shutdown = getattr(executor, "shutdown", None)
+                    if callable(shutdown):
+                        shutdown()
+
+        return _shutdown_callback
+
     def update_run_id(self, name: str, doc: dict) -> None:
         if name == "start":
             self.run_id = doc["uid"]

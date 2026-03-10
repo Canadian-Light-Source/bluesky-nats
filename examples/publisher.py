@@ -60,13 +60,7 @@ if __name__ == "__main__":
         client_config=config, executor=executor, subject_factory="events.nats-bluesky", strict_publish=True
     )
 
-    def _shutdown_nats_publisher() -> None:
-        try:
-            nats_publisher.close()
-        finally:
-            executor.shutdown()
-
-    atexit.register(_shutdown_nats_publisher)
+    atexit.register(nats_publisher.shutdown_callback(timeout=10, shutdown_executor=True))
 
     # Fail fast before executing any plans: publishing is mandatory in this setup.
     if not nats_publisher.ensure_connection(timeout=10):
