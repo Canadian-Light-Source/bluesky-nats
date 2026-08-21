@@ -1,21 +1,17 @@
 import asyncio
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
-from dataclasses import asdict
-from typing import TYPE_CHECKING, Any
+from dataclasses import fields
+from typing import Any
 
 from bluesky.run_engine import Dispatcher
 from event_model import DocumentNames
-from nats.aio.client import Client as NATS  # noqa: N814
-from nats.errors import TimeoutError as NATS_TimeoutError
-from nats.js.api import ConsumerConfig, DeliverPolicy
+from nats.client import Client, ClientStatus
+from nats.client import connect as nats_connect
+from nats.jetstream import JetStream
 from ormsgpack import unpackb
 
 from bluesky_nats.nats_client import NATSClientConfig
-
-
-if TYPE_CHECKING:
-    from nats.js import JetStreamContext
 
 
 class NATSDispatcher(Dispatcher):
@@ -32,15 +28,12 @@ class NATSDispatcher(Dispatcher):
 
         self._client_config = client_config if client_config is not None else NATSClientConfig()
 
-        self._consumer_config = ConsumerConfig(
-            description="Bluesky Dispatcher for NATS", deliver_policy=DeliverPolicy.NEW
-        )
-
+        # TODO: ConsumerConfig/subscribe API pending nats-jetstream support
         self._deserializer = deserializer
         self.loop = loop or asyncio.get_event_loop()
-        self._nc = NATS()
-        self._js: JetStreamContext
-        self._subscription: JetStreamContext.PushSubscription
+        self._nc: Client | None = None
+        self._js: JetStream | None = None
+        self._subscription = None
         self._task = None
         self.closed = False
 
@@ -62,8 +55,20 @@ class NATSDispatcher(Dispatcher):
         self._task = self.loop.create_task(self._poll())
 
     async def connect(self) -> None:
-        await self._nc.connect(**asdict(self._client_config))
-        self._js = self._nc.jetstream()
+        servers = self._client_config.servers
+        server_list = servers if isinstance(servers, list) else [servers]
+        kwargs = {
+            f.name: getattr(self._client_config, f.name) for f in fields(self._client_config) if f.name != "servers"
+        }
+        last_exc: Exception | None = None
+        for url in server_list:
+            try:
+                self._nc = await nats_connect(url, **kwargs)
+                self._js = JetStream(self._nc)
+                return
+            except Exception as e:  # noqa: BLE001
+                last_exc = e
+        raise last_exc or RuntimeError("No NATS servers could be reached")
 
     async def _subscribe(self) -> None:
         self._subscription = await self._js.subscribe(
@@ -84,7 +89,7 @@ class NATSDispatcher(Dispatcher):
                     print(f"Error processing message: {e}")
             except asyncio.CancelledError:
                 break
-            except NATS_TimeoutError:
+            except TimeoutError:
                 continue
             except Exception as e:  # noqa: BLE001
                 print(f"Unexpected error: {e!s}")
@@ -132,7 +137,7 @@ class NATSDispatcher(Dispatcher):
             except Exception as e:  # noqa: BLE001
                 print(f"Error unsubscribing: {e}")
 
-        if self._nc is not None and self._nc.is_connected:
+        if self._nc is not None and self._nc.status == ClientStatus.CONNECTED:
             try:
                 await asyncio.wait_for(self._nc.close(), timeout=5.0)
             except TimeoutError:

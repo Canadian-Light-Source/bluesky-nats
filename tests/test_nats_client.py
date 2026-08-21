@@ -1,168 +1,109 @@
 # from unittest.mock import MagicMock, mock_open, patch
 
 
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
 
-from bluesky_nats.filehandler import JSONFileHandler, TOMLFileHandler, YAMLFileHandler
-from bluesky_nats.nats_client import NATSClientConfig, NATSClientConfigBuilder
+from bluesky_nats.nats_client import NATSClientConfig, connect_client_sync, connect_kv_sync, connect_sync
+from bluesky_nats.nats_publisher import CoroutineExecutor
+
+
+@pytest.fixture
+def executor():
+    exc = CoroutineExecutor()
+    yield exc
+    exc.shutdown()
 
 
 def test_init_config_default() -> None:
     """Most basic initialization."""
     config = NATSClientConfig()
     assert isinstance(config, NATSClientConfig)
+    assert config.servers == ["nats://localhost:4222"]
 
 
-def test_init_config_with_valid_callbacks():
-    """Initialize with a valid callback."""
-
-    def mock_callback():
-        """Mock callback."""
-
-    config = NATSClientConfig(error_cb=mock_callback)  # type: ignore  # noqa: PGH003
-    assert isinstance(config, NATSClientConfig)
+def test_init_config_custom_servers() -> None:
+    config = NATSClientConfig(servers=["nats://host1:4222", "nats://host2:4222"])
+    assert len(config.servers) == 2
 
 
-def test_init_config_with_invalid_callbacks():
-    """Initialize with invalid callbacks."""
-    with pytest.raises(TypeError):
-        NATSClientConfig(error_cb=42)  # type: ignore  # noqa: PGH003
-
-    with pytest.raises(TypeError):
-        NATSClientConfig(disconnected_cb="not callable")  # type: ignore  # noqa: PGH003
+def test_init_config_single_server_string() -> None:
+    config = NATSClientConfig(servers="nats://host1:4222")
+    assert config.servers == "nats://host1:4222"
 
 
-def test_init_config_builder() -> None:
-    """Most basic initialization."""
-    builder = NATSClientConfig().builder()
-    assert isinstance(builder, NATSClientConfigBuilder)
-
-
-def test_init_builder() -> None:
-    """Initialize builder without any fields."""
-    builder = NATSClientConfigBuilder()
-    assert isinstance(builder, NATSClientConfigBuilder)
-
-
-def test_builder_build() -> None:
-    """Build default configuration."""
-    builder_config = NATSClientConfigBuilder().build()
-    assert isinstance(builder_config, NATSClientConfig)
-
+def test_config_is_frozen() -> None:
     config = NATSClientConfig()
-    assert config == builder_config
+    with pytest.raises((AttributeError, TypeError)):
+        config.servers = "nats://other:4222"  # type: ignore[misc]
 
 
-def test_builder_set_method() -> None:
-    """Test builder set method."""
-    builder = NATSClientConfigBuilder()
-    builder.set("servers", ["nats://example.com:4222"])
-    config = builder.build()
-    assert config.servers == ["nats://example.com:4222"]
-
-    with pytest.raises(KeyError):
-        builder.set("non_existent_key", 42)
-
-    with pytest.raises(
-        ValueError,
-        match=r"Cannot set callback 'error_cb' via 'set\(\)' method, use the 'set_callback\(\)' method instead.",
-    ):
-        builder.set("error_cb", 42)
+def test_connect_client_sync_returns_client(executor) -> None:
+    mock_nc = Mock()
+    mock_nc.connect = AsyncMock()
+    with patch("bluesky_nats.nats_client.Client", return_value=mock_nc):
+        result = connect_client_sync(executor)
+    assert result is mock_nc
+    mock_nc.connect.assert_awaited_once()
 
 
-def test_builder_set_callback_method() -> None:
-    """Test builder set_callback method."""
-
-    def mock_callback() -> None:
-        """Mock callback."""
-
-    builder = NATSClientConfigBuilder()
-    builder.set_callback("error_cb", mock_callback)
-    config = builder.build()
-    assert config.error_cb == mock_callback
-
-    with pytest.raises(TypeError):
-        builder.set_callback("error_cb", 42)  # type: ignore  # noqa: PGH003
-
-    with pytest.raises(ValueError, match="Invalid callback name: non_existent_callback"):
-        builder.set_callback("non_existent_callback", mock_callback)
-
-    with pytest.raises(KeyError):
-        builder.set_callback("non_existent_callback_cb", mock_callback)
+def test_connect_client_sync_passes_server_list(executor) -> None:
+    mock_nc = Mock()
+    mock_nc.connect = AsyncMock()
+    config = NATSClientConfig(servers=["nats://a:4222", "nats://b:4222"])
+    with patch("bluesky_nats.nats_client.Client", return_value=mock_nc):
+        connect_client_sync(executor, config)
+    call_kwargs = mock_nc.connect.call_args
+    assert call_kwargs.kwargs["servers"] == ["nats://a:4222", "nats://b:4222"]
 
 
-@pytest.fixture
-def mock_path_exists(mocker):
-    """Mock path exists."""
-    return mocker.patch("pathlib.Path.exists", return_value=True)  # Mock Path.exists to avoid actual file access
+def test_connect_client_sync_raises_on_connect_failure(executor) -> None:
+    mock_nc = Mock()
+    mock_nc.connect = AsyncMock(side_effect=RuntimeError("refused"))
+    config = NATSClientConfig(servers="nats://a:4222")
+    with patch("bluesky_nats.nats_client.Client", return_value=mock_nc):
+        with pytest.raises(RuntimeError, match="refused"):
+            connect_client_sync(executor, config)
 
 
-@pytest.fixture
-def mock_json_config_file(mocker):
-    """Mock JSON file."""
-    return mocker.patch(
-        "pathlib.Path.open", new_callable=mocker.mock_open, read_data='{"servers": ["nats://example.com:4222"]}'
-    )
+def test_connect_client_sync_single_string_server(executor) -> None:
+    mock_nc = Mock()
+    mock_nc.connect = AsyncMock()
+    config = NATSClientConfig(servers="nats://host:4222")
+    with patch("bluesky_nats.nats_client.Client", return_value=mock_nc):
+        result = connect_client_sync(executor, config)
+    assert result is mock_nc
+    assert mock_nc.connect.call_args.kwargs["servers"] == ["nats://host:4222"]
 
 
-def test_builder_from_file_success(mocker, mock_path_exists, mock_json_config_file):
-    """Test builder from file."""
-    builder = NATSClientConfigBuilder.from_file("config.json")
-    config = builder.build()
-    assert config.servers == ["nats://example.com:4222"]
-
-    mock_json_config_file.assert_called_once()
-    mock_path_exists.assert_called_once()
-
-
-def test_builder_from_file_exception(mocker, mock_path_exists):
-    """Test builder from file with file not found exception."""
-    mock_file_handler = mocker.Mock()
-    mock_file_handler.load_data.side_effect = FileNotFoundError
-    with pytest.raises(FileNotFoundError):
-        NATSClientConfigBuilder.from_file("non_existent_file.toml")
-
-    mock_file_handler.load_data.side_effect = ValueError
-    with pytest.raises(ValueError, match="Unsupported file format:"):
-        NATSClientConfigBuilder.from_file("invalid_format.xyz")
+def test_connect_kv_sync_returns_key_value(executor) -> None:
+    mock_kv = Mock()
+    mock_js = Mock()
+    mock_js.key_value = AsyncMock(return_value=mock_kv)
+    result = connect_kv_sync(executor, mock_js, bucket="test-bucket")
+    assert result is mock_kv
+    mock_js.key_value.assert_awaited_once_with("test-bucket")
 
 
-def test_from_file_invalid_key(mocker):
-    """Test from_file with invalid key."""
-    mocker.patch(
-        "bluesky_nats.nats_client.NATSClientConfigBuilder.get_file_handler",
-        return_value=mocker.Mock(load_data=lambda: {"invalid_key": "invalid_value"}),
-    )
+def test_connect_kv_sync_uses_provided_kv_config(executor) -> None:
+    from nats.js.api import KeyValueConfig
 
-    with pytest.raises(RuntimeError):
-        NATSClientConfigBuilder.from_file("valid_file.yml")
-
-
-@pytest.fixture
-def mock_file(mocker):
-    """Mock TOML file."""
-    return mocker.patch("pathlib.Path.open", new_callable=mocker.mock_open, read_data="{}")
+    mock_kv = Mock()
+    mock_js = Mock()
+    custom_config = KeyValueConfig(bucket="custom")
+    mock_js.key_value = AsyncMock(return_value=mock_kv)
+    connect_kv_sync(executor, mock_js, bucket="ignored", kv_config=custom_config)
+    mock_js.key_value.assert_awaited_once_with("custom")
 
 
-def test_builder_get_file_handler(mock_path_exists, mock_file) -> None:
-    """Test builder_get_file_handler."""
-    # Test JSON handler
-    assert isinstance(NATSClientConfigBuilder.get_file_handler("config.json"), JSONFileHandler)
-
-    # Test YAML handler
-    assert isinstance(NATSClientConfigBuilder.get_file_handler("config.yaml"), YAMLFileHandler)
-
-    # Test TOML handler
-    assert isinstance(NATSClientConfigBuilder.get_file_handler("config.toml"), TOMLFileHandler)
-
-    # Ensure that the file open method was not called
-    mock_file.assert_not_called()
-
-    # Simulate non-existent file for the ValueError case
-    with pytest.raises(ValueError, match=r"Unsupported file format: \.txt"):
-        NATSClientConfigBuilder.get_file_handler("config.txt")
-
-    # Simulate non-existent file for FileNotFoundError
-    mock_path_exists.side_effect = lambda: False
-    with pytest.raises(FileNotFoundError):
-        NATSClientConfigBuilder.get_file_handler("non_existent_file.toml")
+def test_connect_sync_returns_client_and_jetstream(executor) -> None:
+    mock_nc = Mock()
+    mock_nc.connect = AsyncMock()
+    mock_js = Mock()
+    mock_nc.jetstream.return_value = mock_js
+    with patch("bluesky_nats.nats_client.Client", return_value=mock_nc):
+        client, js = connect_sync(executor)
+    assert client is mock_nc
+    assert js is mock_js
+    mock_nc.jetstream.assert_called_once_with()

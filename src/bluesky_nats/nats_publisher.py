@@ -1,23 +1,20 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import threading
 import time
 from abc import ABC, abstractmethod
 from concurrent.futures import CancelledError as FutureCancelledError
-from concurrent.futures import Executor, Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeoutError
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from threading import Lock
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol
 
 from bluesky.log import logger
-from nats.aio.client import Client as NATS  # noqa: N814
+from nats.aio.client import Client
 from nats.js.errors import NoStreamResponseError
 from ormsgpack import OPT_NAIVE_UTC, OPT_SERIALIZE_NUMPY, packb
-
-from bluesky_nats.nats_client import NATSClientConfig
 
 
 NATS_TIMEOUT = 10.0
@@ -26,17 +23,29 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from uuid import UUID
 
-    from nats.js import JetStreamContext
+    from nats.js.client import JetStreamContext
 
 
-class CoroutineExecutor(Executor):
-    def __init__(self) -> None:
-        self._io_loop = asyncio.new_event_loop()
-        self._io_loop_thread = threading.Thread(target=self._run_io_loop, name="nats-coroutine-executor", daemon=True)
-        self._thread_pool = ThreadPoolExecutor()
+class CoroutineExecutor:
+    """Submits coroutines to an asyncio event loop from any thread.
+
+    With no arguments, creates and manages its own background event loop.
+    Pass a running event loop to use an externally managed one instead.
+    """
+
+    def __init__(self, loop: asyncio.AbstractEventLoop | None = None) -> None:
+        self._owns_loop = loop is None
+        if loop is None:
+            self._io_loop = asyncio.new_event_loop()
+            self._io_loop_thread: threading.Thread | None = threading.Thread(
+                target=self._run_io_loop, name="nats-coroutine-executor", daemon=True
+            )
+            self._io_loop_thread.start()
+        else:
+            self._io_loop = loop
+            self._io_loop_thread = None
         self._shutdown_lock = Lock()
         self._is_shutdown = False
-        self._io_loop_thread.start()
 
     def _run_io_loop(self) -> None:
         asyncio.set_event_loop(self._io_loop)
@@ -54,31 +63,22 @@ class CoroutineExecutor(Executor):
                 raise RuntimeError(msg)
         return asyncio.run_coroutine_threadsafe(coro, self._io_loop)
 
-    def submit(self, fn: object, *args, **kwargs) -> Any:  # noqa: ANN002
-        if not callable(fn):
-            msg = f"Expected callable, got {type(fn).__name__}"
-            raise TypeError(msg)
-        callable_fn = cast("Callable[..., Any]", fn)
-        if inspect.iscoroutinefunction(callable_fn):
-            return self.submit_coroutine(callable_fn(*args, **kwargs))
-        with self._shutdown_lock:
-            if self._is_shutdown:
-                msg = "CoroutineExecutor is shut down"
-                raise RuntimeError(msg)
-        return self._thread_pool.submit(callable_fn, *args, **kwargs)
-
-    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:  # noqa: FBT001, FBT002
+    def shutdown(self, wait: bool = True) -> None:  # noqa: FBT001, FBT002
         with self._shutdown_lock:
             if self._is_shutdown:
                 return
             self._is_shutdown = True
 
-        self._thread_pool.shutdown(wait=wait, cancel_futures=cancel_futures)
-
-        if self._io_loop.is_running():
+        if self._owns_loop and self._io_loop.is_running():
             self._io_loop.call_soon_threadsafe(self._io_loop.stop)
 
-        if wait and self._io_loop_thread.is_alive() and threading.current_thread() is not self._io_loop_thread:
+        if (
+            wait
+            and self._owns_loop
+            and self._io_loop_thread is not None
+            and self._io_loop_thread.is_alive()
+            and threading.current_thread() is not self._io_loop_thread
+        ):
             self._io_loop_thread.join()
 
     def close(self) -> None:
@@ -127,24 +127,21 @@ class NATSPublisher(Publisher):
     def __init__(
         self,
         executor: CoroutineSubmittingExecutor,
-        client_config: NATSClientConfig | None = None,
-        subject_factory: Callable[[], str] | str | None = "events.volatile",
+        client: Client,
+        js: JetStreamContext,
+        subject_factory: Callable[[], str] | str = "events.volatile",
         *,
         strict_publish: bool = False,
     ) -> None:
         logger.debug(f"new {self.__class__} instance created.")
-
-        self._client_config = client_config if client_config is not None else NATSClientConfig()
 
         if not hasattr(executor, "submit_coroutine"):
             msg = "executor must provide a submit_coroutine(coro) method"
             raise TypeError(msg)
 
         self.executor = executor
-        self.nats_client = NATS()
-        self.js: JetStreamContext | None = None
-        self._connect_future: Future[Any] | None = None
-        self._connect_lock = Lock()
+        self.nats_client = client
+        self.js: JetStreamContext | None = js
         self._publish_futures: set[Future[Any]] = set()
         self._publish_lock = Lock()
         self._strict_publish = strict_publish
@@ -175,14 +172,13 @@ class NATSPublisher(Publisher):
         headers = {"run_id": self.run_id}
 
         payload = packb(doc, option=OPT_NAIVE_UTC | OPT_SERIALIZE_NUMPY)
-        self._start_connect_if_needed()
         publish_future = self.executor.submit_coroutine(self.publish(subject=subject, payload=payload, headers=headers))
         with self._publish_lock:
             self._publish_futures.add(publish_future)
         publish_future.add_done_callback(self._on_publish_done)
         if self._strict_publish and publish_future.done():
             publish_future.result()
-        logger.debug(f"NATS publisher state connected={self.nats_client.is_connected}, js_ready={self.js is not None}")
+        logger.debug(f"NATS publisher state connected={self._is_connected}, js_ready={self.js is not None}")
 
     def _record_strict_error(self, exception: BaseException) -> None:
         with self._health_lock:
@@ -209,51 +205,6 @@ class NATSPublisher(Publisher):
             return
         msg = f"NATS strict publish failure: {exception!s}"
         raise RuntimeError(msg) from exception
-
-    def ensure_connection(self, timeout: float = NATS_TIMEOUT) -> bool:
-        self._start_connect_if_needed()
-        if self._connect_future is None:
-            return self.nats_client.is_connected and self.js is not None
-
-        connect_future = self._connect_future
-
-        try:
-            running_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            running_loop = None
-
-        if running_loop is not None and not connect_future.done():
-            logger.error(
-                "NATS ensure_connection called from a running event loop with pending connect future; "
-                "failing fast to avoid blocking the loop"
-            )
-            return False
-
-        try:
-            connect_future.result(timeout=timeout)
-        except FutureTimeoutError:
-            logger.warning(f"NATS connect did not finish within {timeout}s")
-            return False
-        except Exception as e:  # noqa: BLE001
-            with self._connect_lock:
-                if self._connect_future is connect_future:
-                    self._connect_future = None
-                    self.js = None
-            logger.debug(f"NATS connect future returned error: {e!s}")
-            return False
-        return self.nats_client.is_connected and self.js is not None
-
-    def _on_connect_done(self, future: Future[Any]) -> None:
-        exception = future.exception()
-        if exception is None:
-            logger.debug(f"NATS connect future done, is_connected={self.nats_client.is_connected}")
-            return
-        with self._connect_lock:
-            if self._connect_future is future:
-                self._connect_future = None
-                self.js = None
-        self._record_strict_error(exception)
-        logger.debug(f"NATS connect future failed: {exception!s}")
 
     def _on_publish_done(self, future: Future[Any]) -> None:
         with self._publish_lock:
@@ -306,7 +257,7 @@ class NATSPublisher(Publisher):
             last_error_at = self._last_error_at
             last_ack_at = self._last_ack_at
             last_subject = self._last_subject
-        connected = self.nats_client.is_connected and self.js is not None
+        connected = self._is_connected
         return PublisherHealth(
             connected=connected,
             strict_publish=self._strict_publish,
@@ -317,30 +268,8 @@ class NATSPublisher(Publisher):
             last_subject=last_subject,
         )
 
-    async def _drain_and_close_nats(self) -> None:
-        if self.nats_client.is_connected:
-            await self.nats_client.drain()
-            return
-        await self.nats_client.close()
-
     def close(self, timeout: float = NATS_TIMEOUT) -> bool:
-        ok = self.flush_publishes(timeout=timeout)
-
-        try:
-            close_future = self.executor.submit_coroutine(self._drain_and_close_nats())
-            close_future.result(timeout=timeout)
-        except FutureTimeoutError:
-            logger.warning(f"NATS close timed out within {timeout}s")
-            ok = False
-        except Exception:  # noqa: BLE001
-            logger.exception("NATS close failed")
-            ok = False
-        finally:
-            with self._connect_lock:
-                self._connect_future = None
-                self.js = None
-
-        return ok
+        return self.flush_publishes(timeout=timeout)
 
     def shutdown_callback(
         self, *, timeout: float = NATS_TIMEOUT, shutdown_executor: bool = False
@@ -366,46 +295,9 @@ class NATSPublisher(Publisher):
             msg = "Publisher: UUID for start and stop must be identical"
             raise ValueError(msg)
 
-    async def _connect(self, config: NATSClientConfig) -> None:
-        try:
-            await self.nats_client.connect(**asdict(config))
-            self.js = self.nats_client.jetstream()
-            logger.info(f"NATS connected: is_connected={self.nats_client.is_connected}, servers={config.servers}")
-        except Exception:
-            logger.exception(f"NATS connect failed: servers={config.servers}")
-            raise
-
-    def _start_connect_if_needed(self) -> None:
-        is_connected = self.nats_client.is_connected and self.js is not None
-        if is_connected or self._connect_future is not None:
-            return
-        with self._connect_lock:
-            is_connected = self.nats_client.is_connected and self.js is not None
-            if is_connected or self._connect_future is not None:
-                return
-            logger.debug("NATS scheduling connect coroutine")
-            self._connect_future = self.executor.submit_coroutine(self._connect(self._client_config))
-            self._connect_future.add_done_callback(self._on_connect_done)
-
-    async def _ensure_connected(self) -> None:
-        self._start_connect_if_needed()
-        if self._connect_future is None:
-            return
-        try:
-            await asyncio.wrap_future(self._connect_future)
-        except Exception as e:
-            with self._connect_lock:
-                self._connect_future = None
-                self.js = None
-            msg = f"{e!s}"
-            raise ConnectionError(msg) from e
-
-    async def _get_jetstream(self) -> JetStreamContext:
-        await self._ensure_connected()
-        if self.js is None:
-            msg = "NATS JetStream context is not available"
-            raise ConnectionError(msg)
-        return self.js
+    @property
+    def _is_connected(self) -> bool:
+        return self.nats_client.is_connected
 
     @property
     def run_id(self) -> UUID:
@@ -417,19 +309,16 @@ class NATSPublisher(Publisher):
 
     async def publish(self, subject: str, payload: bytes, headers: dict) -> None:
         """Publish a message to a subject."""
-        js = await self._get_jetstream()
         try:
-            ack = await js.publish(subject=subject, payload=payload, headers=headers)
+            ack = await self.js.publish(subject=subject, payload=payload, headers=headers)
             self._record_publish_ack(subject)
-            logger.debug(f"NATS published: subject={subject}, is_connected={self.nats_client.is_connected}, ack={ack}")
+            logger.debug(f"NATS published: subject={subject}, ack={ack}")
         except NoStreamResponseError as e:
             self._record_strict_error(e)
-            logger.exception(
-                f"NATS no stream response: subject={subject}, is_connected={self.nats_client.is_connected}"
-            )
+            logger.exception(f"NATS no stream response: subject={subject}")
         except Exception as e:  # noqa: BLE001
             self._record_strict_error(e)
-            logger.exception(f"NATS publish failed: subject={subject}, is_connected={self.nats_client.is_connected}")
+            logger.exception(f"NATS publish failed: subject={subject}")
 
     @staticmethod
     def validate_subject_factory(subject_factory: str | Callable[[], str] | None) -> str | Callable[[], str]:
