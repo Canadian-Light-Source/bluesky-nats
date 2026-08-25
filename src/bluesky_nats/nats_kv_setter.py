@@ -29,7 +29,7 @@ class NATSKVSetter:
         """Set a key-value pair in the NATS JetStream KV store."""
         try:
             await self.kv.put(key, value)
-            logger.info(f"Set key-value pair: key={key}, value={value!r}")
+            logger.info(f"Set key-value pair: key={key}, bytes={len(value)}")
         except InvalidKeyError as e:
             logger.error(f"Invalid key error for key={key}: {e!s}")
             raise
