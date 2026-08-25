@@ -1,50 +1,101 @@
 # Changelog
 
-## V2
+## v2.0.0 (unreleased) — changes from v1.0.0
 
-### Refactor: decouple async infrastructure, fix dispatcher, fix KV setter inheritance
+### Breaking changes
 
-#### `NATSDispatcher` — migrate back to `nats-py`
+#### `NATSPublisher` constructor
 
-The dispatcher was left in a state assuming a split `nats-core`/`nats-jetstream` package structure. Migrated back to the standard `nats-py` API:
-
-- Imports now use `nats.aio.client.Client` and `nats.js.client.JetStreamContext`
-- `connect()` uses `Client().connect(servers=...) + nc.jetstream()` matching the pattern in the rest of the codebase
-- Removed the nonexistent `config=self._consumer_config` argument from `_subscribe()`
-- `stop()` uses `nc.is_connected` instead of `nc.status == ClientStatus.CONNECTED`
-
-#### Extract `AsyncPublishManager` and async infrastructure into `nats_executor.py`
-
-Introduced a new `nats_executor.py` module containing classes that are not tied to publishing specifically:
-
-- `CoroutineExecutor` — manages a background asyncio event loop
-- `CoroutineSubmittingExecutor` — Protocol for duck-typed executors
-- `PublisherHealth` — health snapshot dataclass
-- `AsyncPublishManager` — owns the publish-futures lifecycle, strict-mode error latch, health tracking, `flush_publishes`, `close`, and `shutdown_callback`
-
-`nats_publisher.py` is now trimmed to `Publisher` (ABC) and `NATSPublisher` only.
-
-#### `NATSKVSetter` — replace inheritance with composition
-
-`NATSKVSetter` was subclassing `NATSPublisher` purely to reuse infrastructure, causing a Liskov violation: `__call__` had an incompatible signature (requiring `# pyright: ignore`), `publish()` raised `NotImplementedError`, and `_subject_factory`/`update_run_id`/`run_id`/`js` were all inherited dead weight.
-
-`NATSKVSetter` is now a standalone class:
-
-- Constructor: `(manager: AsyncPublishManager, kv: KeyValue)` — `js` dropped (was unused)
-- `__call__(self, payload: dict)` — clean signature, no overrides or suppressed warnings
-- Exposes `health`, `close`, `shutdown_callback` via the injected manager
-
-**Usage before:**
+v1 bundled connection management inside the publisher:
 
 ```python
-publisher = NATSPublisher(executor=executor, client=client, js=js, strict_publish=True)
-kv_setter = NATSKVSetter(executor=executor, client=client, js=js, kv=kv)
+# v1
+publisher = NATSPublisher(
+    executor=executor,
+    client_config=config,
+    subject_factory="events.nats-bluesky",
+    strict_publish=True,
+)
+publisher.ensure_connection(timeout=10)
 ```
 
-**Usage after:**
+v2 separates connection and publish-lifecycle management. Connect first via
+`nats_client`, then inject an `AsyncPublishManager`:
 
 ```python
+# v2
+from bluesky_nats.nats_client import connect_sync
+from bluesky_nats.nats_executor import AsyncPublishManager, CoroutineExecutor
+from bluesky_nats.nats_publisher import NATSPublisher
+
+executor = CoroutineExecutor()
+client, js = connect_sync(executor, config)
 manager = AsyncPublishManager(executor, client, strict_publish=True)
-publisher = NATSPublisher(manager=manager, js=js)
-kv_setter = NATSKVSetter(manager=manager, kv=kv)  # manager may be shared
+publisher = NATSPublisher(manager=manager, js=js, subject_factory="events.nats-bluesky")
 ```
+
+- `ensure_connection()` removed — check `client.is_connected` directly
+- `strict_publish` moved to `AsyncPublishManager`, not `NATSPublisher`
+
+#### Import paths
+
+`CoroutineExecutor`, `CoroutineSubmittingExecutor`, `PublisherHealth`, and
+`AsyncPublishManager` are now in `bluesky_nats.nats_executor`, not
+`bluesky_nats.nats_publisher`.
+
+#### Removed: `NATSClientConfigBuilder`
+
+`NATSClientConfigBuilder` and its `from_file(...)` method have been removed.
+Build `NATSClientConfig` directly or use your own config loading.
+
+#### Removed: `callbacks.py` and `filehandler.py`
+
+These modules have been removed from the package.
+
+---
+
+### New features
+
+#### `nats_executor.py` — async infrastructure module
+
+A new module that contains the async execution and health infrastructure,
+independent of any particular publisher:
+
+- `CoroutineExecutor` — manages a dedicated background asyncio event loop; now
+  accepts an optional `loop` argument to reuse an externally managed loop
+- `AsyncPublishManager` — owns publish-futures tracking, strict-mode error
+  latching, health reporting, `flush_publishes`, `close`, and
+  `shutdown_callback`; can be shared between a publisher and a KV setter
+- `PublisherHealth` — health snapshot dataclass (moved here from `nats_publisher`)
+
+#### `nats_kv_setter.py` — new KV writing component
+
+`NATSKVSetter` writes Bluesky documents as key-value pairs into a NATS
+JetStream KV bucket. It is a standalone class (not a subclass of `NATSPublisher`):
+
+```python
+from bluesky_nats.nats_client import connect_kv_sync, connect_sync
+from bluesky_nats.nats_executor import AsyncPublishManager, CoroutineExecutor
+from bluesky_nats.nats_kv_setter import NATSKVSetter
+
+executor = CoroutineExecutor()
+client, js = connect_sync(executor, config)
+kv = connect_kv_sync(executor, js, bucket="live")
+manager = AsyncPublishManager(executor, client)
+kv_setter = NATSKVSetter(manager=manager, kv=kv)
+```
+
+#### `nats_client.py` — connection helpers
+
+Three synchronous convenience functions replace the old `NATSClientConfigBuilder`-
+based connection pattern:
+
+- `connect_client_sync(executor, config)` — returns a connected `Client`
+- `connect_kv_sync(executor, js, bucket)` — opens a KV bucket
+- `connect_sync(executor, config)` — returns `(Client, JetStreamContext)`
+
+#### `NATSDispatcher` — fixed
+
+The dispatcher was broken by a previous attempt to migrate to split
+`nats-core`/`nats-jetstream` packages. It has been restored to the standard
+`nats-py` API.
