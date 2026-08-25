@@ -2,16 +2,18 @@ import asyncio
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import fields
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bluesky.run_engine import Dispatcher
 from event_model import DocumentNames
-from nats.client import Client, ClientStatus
-from nats.client import connect as nats_connect
-from nats.jetstream import JetStream
+from nats.aio.client import Client
 from ormsgpack import unpackb
 
 from bluesky_nats.nats_client import NATSClientConfig
+
+
+if TYPE_CHECKING:
+    from nats.js.client import JetStreamContext
 
 
 class NATSDispatcher(Dispatcher):
@@ -28,11 +30,10 @@ class NATSDispatcher(Dispatcher):
 
         self._client_config = client_config if client_config is not None else NATSClientConfig()
 
-        # TODO: ConsumerConfig/subscribe API pending nats-jetstream support
         self._deserializer = deserializer
         self.loop = loop or asyncio.get_event_loop()
         self._nc: Client | None = None
-        self._js: JetStream | None = None
+        self._js: JetStreamContext | None = None
         self._subscription = None
         self._task = None
         self.closed = False
@@ -60,22 +61,22 @@ class NATSDispatcher(Dispatcher):
         kwargs = {
             f.name: getattr(self._client_config, f.name) for f in fields(self._client_config) if f.name != "servers"
         }
-        last_exc: Exception | None = None
-        for url in server_list:
-            try:
-                self._nc = await nats_connect(url, **kwargs)
-                self._js = JetStream(self._nc)
-                return
-            except Exception as e:  # noqa: BLE001
-                last_exc = e
-        raise last_exc or RuntimeError("No NATS servers could be reached")
+        self._nc = Client()
+        await self._nc.connect(servers=server_list, **kwargs)
+        self._js = self._nc.jetstream()
 
     async def _subscribe(self) -> None:
+        if self._js is None:
+            msg = "Not connected; call connect() first"
+            raise RuntimeError(msg)
         self._subscription = await self._js.subscribe(
-            subject=self._subject, stream=self._stream_name, ordered_consumer=True, config=self._consumer_config
+            subject=self._subject, stream=self._stream_name, ordered_consumer=True
         )
 
     async def _poll(self) -> None:
+        if self._subscription is None:
+            msg = "Not subscribed; call _subscribe() first"
+            raise RuntimeError(msg)
         while True:
             try:
                 msg = await self._subscription.next_msg()
@@ -137,7 +138,7 @@ class NATSDispatcher(Dispatcher):
             except Exception as e:  # noqa: BLE001
                 print(f"Error unsubscribing: {e}")
 
-        if self._nc is not None and self._nc.status == ClientStatus.CONNECTED:
+        if self._nc is not None and self._nc.is_connected:
             try:
                 await asyncio.wait_for(self._nc.close(), timeout=5.0)
             except TimeoutError:
