@@ -3,8 +3,8 @@ import sys
 from bluesky.log import logger
 
 from bluesky_nats.nats_client import NATSClientConfig, connect_kv_sync, connect_sync
+from bluesky_nats.nats_executor import AsyncPublishManager, CoroutineExecutor
 from bluesky_nats.nats_kv_setter import NATSKVSetter
-from bluesky_nats.nats_publisher import CoroutineExecutor
 
 
 if __name__ == "__main__":
@@ -12,8 +12,8 @@ if __name__ == "__main__":
     executor = CoroutineExecutor()
     client, js = connect_sync(executor, config)
     kv = connect_kv_sync(executor, js, bucket="live")
-
-    kv_setter = NATSKVSetter(executor=executor, client=client, js=js, kv=kv)
+    manager = AsyncPublishManager(executor, client)
+    kv_setter = NATSKVSetter(manager=manager, kv=kv)
 
     if not client.is_connected:
         print("Failed to connect to NATS")

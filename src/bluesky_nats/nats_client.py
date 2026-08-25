@@ -16,7 +16,7 @@ from nats.js.kv import KeyValue
 
 
 if TYPE_CHECKING:
-    from bluesky_nats.nats_publisher import CoroutineExecutor
+    from bluesky_nats.nats_executor import CoroutineExecutor
 
 
 @dataclass(frozen=True)

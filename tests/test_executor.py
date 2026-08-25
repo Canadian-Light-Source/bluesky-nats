@@ -3,7 +3,7 @@ import threading
 
 import pytest
 
-from bluesky_nats.nats_publisher import CoroutineExecutor
+from bluesky_nats.nats_executor import CoroutineExecutor
 
 
 @pytest.mark.asyncio

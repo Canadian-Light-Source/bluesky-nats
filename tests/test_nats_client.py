@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from bluesky_nats.nats_client import NATSClientConfig, connect_client_sync, connect_kv_sync, connect_sync
-from bluesky_nats.nats_publisher import CoroutineExecutor
+from bluesky_nats.nats_executor import CoroutineExecutor
 
 
 @pytest.fixture
@@ -36,7 +36,7 @@ def test_init_config_single_server_string() -> None:
 def test_config_is_frozen() -> None:
     config = NATSClientConfig()
     with pytest.raises((AttributeError, TypeError)):
-        config.servers = "nats://other:4222"  # type: ignore[misc]
+        config.servers = "nats://other:4222"  # type: ignore[misc] # ty: ignore[invalid-assignment]
 
 
 def test_connect_client_sync_returns_client(executor) -> None:

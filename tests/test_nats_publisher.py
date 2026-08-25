@@ -10,6 +10,7 @@ from hypothesis.strategies import text, uuids
 from nats.aio.client import Client
 from nats.js.errors import NoStreamResponseError
 
+from bluesky_nats.nats_executor import AsyncPublishManager
 from bluesky_nats.nats_publisher import NATSPublisher
 
 
@@ -44,9 +45,8 @@ def _make_publisher(
     """Build a publisher with a pre-connected mock client."""
     client = Mock(spec=Client, is_connected=False)
     js = AsyncMock()
-    return NATSPublisher(
-        executor=executor, client=client, js=js, subject_factory=subject_factory, strict_publish=strict_publish
-    )
+    manager = AsyncPublishManager(executor, client, strict_publish=strict_publish)
+    return NATSPublisher(manager=manager, js=js, subject_factory=subject_factory)
 
 
 """Test the construction of the NATSPublisher."""
@@ -56,18 +56,18 @@ def test_init_publisher(mock_executor):
     """Test the default NATSPublisher constructor."""
     client = Mock(spec=Client, is_connected=False)
     js = AsyncMock()
-    publisher = NATSPublisher(executor=mock_executor, client=client, js=js)
+    manager = AsyncPublishManager(mock_executor, client)
+    publisher = NATSPublisher(manager=manager, js=js)
     mock_executor.submit_coroutine.assert_not_called()
     assert publisher.nats_client is client
     assert publisher.js is js
 
 
 def test_init_rejects_executor_without_submit_coroutine() -> None:
-    """NATSPublisher requires an executor with submit_coroutine."""
+    """AsyncPublishManager requires an executor with submit_coroutine."""
     client = Mock(spec=Client, is_connected=False)
-    js = AsyncMock()
     with pytest.raises(TypeError, match="executor must provide a submit_coroutine"):
-        NATSPublisher(executor=object(), client=client, js=js)  # type: ignore[arg-type]
+        AsyncPublishManager(executor=object(), client=client)  # type: ignore[arg-type], # ty: ignore[invalid-argument-type]
 
 
 """Create a NATSPublisher fixture for later use."""
@@ -78,7 +78,8 @@ def publisher(mock_executor):
     """Fixture to initialize NATSPublisher with mocks."""
     client = Mock(spec=Client, is_connected=True)
     js = AsyncMock()
-    publisher = NATSPublisher(executor=mock_executor, client=client, js=js, subject_factory="test.subject")
+    manager = AsyncPublishManager(mock_executor, client)
+    publisher = NATSPublisher(manager=manager, js=js, subject_factory="test.subject")
     publisher.run_id = uuid4()
     return publisher
 
@@ -95,7 +96,8 @@ def _build_test_publisher() -> NATSPublisher:
     executor.submit_coroutine.side_effect = _submit_coroutine
     client = Mock(spec=Client, is_connected=False)
     js = AsyncMock()
-    return NATSPublisher(executor=executor, client=client, js=js)
+    manager = AsyncPublishManager(executor, client)
+    return NATSPublisher(manager=manager, js=js)
 
 
 @pytest.mark.asyncio
@@ -165,7 +167,7 @@ def test_validate_subject_factory_exceptions() -> None:
         NATSPublisher.validate_subject_factory(42)  # type: ignore  # noqa: PGH003
     # fail on a callable returning non-string
     with pytest.raises(TypeError, match="Callable must return a string"):
-        NATSPublisher.validate_subject_factory(lambda: 42)
+        NATSPublisher.validate_subject_factory(lambda: 42)  # type: ignore  # noqa: PGH003
 
 
 def test_call(publisher, mock_executor):
@@ -218,7 +220,7 @@ def test_close_flushes_pending_publishes() -> None:
 
     ok_future: Future[None] = Future()
     ok_future.set_result(None)
-    publisher._publish_futures.add(ok_future)  # noqa: SLF001
+    publisher.manager._publish_futures.add(ok_future)  # noqa: SLF001
 
     closed = publisher.close(timeout=1)
     assert closed is True
@@ -230,7 +232,7 @@ def test_close_returns_false_when_publish_future_failed() -> None:
 
     failed_future: Future[None] = Future()
     failed_future.set_exception(RuntimeError("publish failed"))
-    publisher._publish_futures.add(failed_future)  # noqa: SLF001
+    publisher.manager._publish_futures.add(failed_future)  # noqa: SLF001
 
     closed = publisher.close(timeout=1)
     assert closed is False
@@ -245,12 +247,12 @@ def test_flush_publishes_returns_false_on_failed_future_and_continues(mock_execu
     ok_future: Future[None] = Future()
     ok_future.set_result(None)
 
-    publisher._publish_futures.add(failed_future)  # noqa: SLF001
-    publisher._publish_futures.add(ok_future)  # noqa: SLF001
+    publisher.manager._publish_futures.add(failed_future)  # noqa: SLF001
+    publisher.manager._publish_futures.add(ok_future)  # noqa: SLF001
 
     flushed = publisher.flush_publishes(timeout=1)
     assert flushed is False
-    assert not publisher._publish_futures  # noqa: SLF001
+    assert not publisher.manager._publish_futures  # noqa: SLF001
 
 
 def test_flush_publishes_returns_false_on_cancelled_future(mock_executor) -> None:
@@ -260,11 +262,11 @@ def test_flush_publishes_returns_false_on_cancelled_future(mock_executor) -> Non
     cancelled_future: Future[None] = Future()
     cancelled_future.cancel()
 
-    publisher._publish_futures.add(cancelled_future)  # noqa: SLF001
+    publisher.manager._publish_futures.add(cancelled_future)  # noqa: SLF001
 
     flushed = publisher.flush_publishes(timeout=1)
     assert flushed is False
-    assert not publisher._publish_futures  # noqa: SLF001
+    assert not publisher.manager._publish_futures  # noqa: SLF001
 
     health = publisher.health
     assert health.last_error is not None
@@ -272,9 +274,9 @@ def test_flush_publishes_returns_false_on_cancelled_future(mock_executor) -> Non
 
 
 def test_shutdown_callback_calls_close_and_executor_shutdown(mock_executor, mocker) -> None:
-    """Shutdown callback closes publisher and optionally shuts down executor."""
+    """Shutdown callback closes the manager and optionally shuts down executor."""
     publisher = _make_publisher(mock_executor)
-    close_mock = mocker.patch.object(publisher, "close", return_value=True)
+    close_mock = mocker.patch.object(publisher.manager, "close", return_value=True)
 
     callback = publisher.shutdown_callback(timeout=3, shutdown_executor=True)
     callback()
@@ -286,7 +288,7 @@ def test_shutdown_callback_calls_close_and_executor_shutdown(mock_executor, mock
 def test_shutdown_callback_skips_executor_shutdown_by_default(mock_executor, mocker) -> None:
     """Shutdown callback does not shut down executor unless requested."""
     publisher = _make_publisher(mock_executor)
-    close_mock = mocker.patch.object(publisher, "close", return_value=True)
+    close_mock = mocker.patch.object(publisher.manager, "close", return_value=True)
 
     callback = publisher.shutdown_callback(timeout=2)
     callback()
@@ -313,7 +315,7 @@ def test_status_defaults(mock_executor) -> None:
 def test_status_reports_last_error(mock_executor) -> None:
     """Health snapshot exposes the last recorded publisher error."""
     publisher = _make_publisher(mock_executor, strict_publish=True)
-    publisher._record_strict_error(RuntimeError("boom"))  # noqa: SLF001
+    publisher.manager._record_strict_error(RuntimeError("boom"))  # noqa: SLF001
 
     health = publisher.health
 
@@ -346,17 +348,17 @@ def test_record_strict_error_does_not_overwrite_first_error(mock_executor) -> No
     publisher = _make_publisher(mock_executor, strict_publish=True)
     first = RuntimeError("first")
     second = RuntimeError("second")
-    publisher._record_strict_error(first)  # noqa: SLF001
-    publisher._record_strict_error(second)  # noqa: SLF001
-    with publisher._strict_error_lock:  # noqa: SLF001
-        assert publisher._strict_error is first  # noqa: SLF001
+    publisher.manager._record_strict_error(first)  # noqa: SLF001
+    publisher.manager._record_strict_error(second)  # noqa: SLF001
+    with publisher.manager._strict_error_lock:  # noqa: SLF001
+        assert publisher.manager._strict_error is first  # noqa: SLF001
 
 
 def test_flush_publishes_returns_false_on_timeout_with_zero_deadline(mock_executor) -> None:
     """flush_publishes returns False immediately when the deadline is already past."""
     publisher = _make_publisher(mock_executor)
     pending: Future[None] = Future()
-    publisher._publish_futures.add(pending)  # noqa: SLF001
+    publisher.manager._publish_futures.add(pending)  # noqa: SLF001
     result = publisher.flush_publishes(timeout=0)
     assert result is False
 
@@ -365,7 +367,7 @@ def test_flush_publishes_returns_false_on_future_timeout(mock_executor) -> None:
     """flush_publishes returns False when waiting for a future result times out."""
     publisher = _make_publisher(mock_executor)
     pending: Future[None] = Future()  # never resolved
-    publisher._publish_futures.add(pending)  # noqa: SLF001
+    publisher.manager._publish_futures.add(pending)  # noqa: SLF001
     result = publisher.flush_publishes(timeout=0.01)
     assert result is False
 
@@ -373,8 +375,8 @@ def test_flush_publishes_returns_false_on_future_timeout(mock_executor) -> None:
 def test_shutdown_callback_skips_shutdown_when_executor_has_no_shutdown(mock_executor, mocker) -> None:
     """shutdown_callback must not raise if the executor has no shutdown method."""
     publisher = _make_publisher(mock_executor)
-    mocker.patch.object(publisher, "close", return_value=True)
-    # replace executor with one that has no shutdown attribute
-    publisher.executor = object()  # type: ignore[assignment]
+    mocker.patch.object(publisher.manager, "close", return_value=True)
+    # replace manager executor with one that has no shutdown attribute
+    publisher.manager.executor = object()  # type: ignore[assignment], # ty: ignore[invalid-assignment]
     callback = publisher.shutdown_callback(shutdown_executor=True)
     callback()  # should not raise

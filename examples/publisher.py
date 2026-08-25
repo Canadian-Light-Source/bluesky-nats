@@ -7,7 +7,8 @@ from bluesky.log import logger
 from bluesky.run_engine import RunEngine
 
 from bluesky_nats.nats_client import NATSClientConfig, connect_sync
-from bluesky_nats.nats_publisher import CoroutineExecutor, NATSPublisher
+from bluesky_nats.nats_executor import AsyncPublishManager, CoroutineExecutor
+from bluesky_nats.nats_publisher import NATSPublisher
 
 
 # Some basic logging setup to show colored log messages in the console.
@@ -59,9 +60,8 @@ if __name__ == "__main__":
     config = NATSClientConfig(servers=["nats://localhost:4222"])
     executor = CoroutineExecutor()
     client, js = connect_sync(executor, config)
-    nats_publisher = NATSPublisher(
-        executor=executor, client=client, js=js, subject_factory="events.nats-bluesky", strict_publish=True
-    )
+    manager = AsyncPublishManager(executor, client, strict_publish=True)
+    nats_publisher = NATSPublisher(manager=manager, js=js, subject_factory="events.nats-bluesky")
 
     atexit.register(nats_publisher.shutdown_callback(timeout=10, shutdown_executor=True))
 
