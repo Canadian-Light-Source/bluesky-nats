@@ -21,13 +21,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # Example usage: Set a key-value pair in the NATS KV store
-    async def set_kv_pair():
-        """Set a key-value pair in the NATS KV store."""
-        await kv_setter.set_key_value("my_key", b"my_value")
-
     kv_setter({"my_key1": "my_value1"})
 
-    # Run the example
-    import asyncio
-
-    asyncio.run(set_kv_pair())
+    # If you need to call the async method directly, run it on the executor loop
+    executor.submit_coroutine(kv_setter.set_key_value("my_key", b"my_value")).result(timeout=10.0)
