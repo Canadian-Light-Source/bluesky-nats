@@ -65,33 +65,31 @@ For local setup, use the provided Docker assets:
 
 ## Minimal publisher example
 
-> [!WARNING]
-> Breaking change: `CoroutineExecutor` no longer accepts a `loop` argument.
-> It now always owns a dedicated background thread and event loop for NATS
-> coroutines. Update old code from `CoroutineExecutor(RE.loop)` to
-> `CoroutineExecutor()`.
-
 Attach `NATSPublisher` to a `RunEngine` and publish documents:
 
 ```python
+import atexit
+
 from bluesky.run_engine import RunEngine
 
-from bluesky_nats.nats_client import NATSClientConfig
-from bluesky_nats.nats_publisher import CoroutineExecutor, NATSPublisher
+from bluesky_nats.nats_client import NATSClientConfig, connect_sync
+from bluesky_nats.nats_executor import AsyncPublishManager, CoroutineExecutor
+from bluesky_nats.nats_publisher import NATSPublisher
 
 if __name__ == "__main__":
     RE = RunEngine({})
     config = NATSClientConfig(servers=["nats://localhost:4222"])
     executor = CoroutineExecutor()
+    client, js = connect_sync(executor, config)
 
+    manager = AsyncPublishManager(executor, client, strict_publish=True)
     nats_publisher = NATSPublisher(
-        client_config=config,
-        executor=executor,
+        manager=manager,
+        js=js,
         subject_factory="events.nats-bluesky",
-        strict_publish=True,
     )
 
-    if not nats_publisher.ensure_connection(timeout=10):
+    if not client.is_connected:
         raise RuntimeError("NATS connection is required before starting plans")
 
     RE.subscribe(nats_publisher)
@@ -100,8 +98,6 @@ if __name__ == "__main__":
     print(nats_publisher.health)
 
     # Optional: register lifecycle cleanup (useful for interactive sessions)
-    import atexit
-
     atexit.register(
         nats_publisher.shutdown_callback(timeout=10, shutdown_executor=True)
     )
@@ -130,13 +126,11 @@ if __name__ == "__main__":
 ## Configuration
 
 - Client connectivity is configured through `NATSClientConfig`.
-- Configuration can also be built from JSON/YAML/TOML via
-  `NATSClientConfigBuilder.from_file(...)`.
 - Publisher subjects are derived as `<subject_factory>.<document_name>`.
 - Publisher does not pick a stream explicitly; the server maps subjects to streams,
   while JetStream publish acknowledgements confirm server receipt.
-- `strict_publish=True` enables fail-fast behavior: async publish/connect failures are
-  latched and raised on subsequent callback calls.
+- `strict_publish=True` on `AsyncPublishManager` enables fail-fast behavior: async
+  publish failures are latched and raised on subsequent callback calls.
 - `publisher.health` returns a `PublisherHealth` snapshot (connectivity, pending publishes,
   last error/ack, and last subject).
 - `publisher.shutdown_callback(...)` returns a zero-arg callable suitable for
@@ -146,9 +140,9 @@ if __name__ == "__main__":
 
 Use strict mode when message delivery is mandatory for your architecture.
 
-- Set `strict_publish=True` on `NATSPublisher`.
-- Call `ensure_connection(...)` before running plans to gate execution.
-- If async publish/connect fails later, strict mode raises `RuntimeError` from the
+- Set `strict_publish=True` on `AsyncPublishManager`.
+- Check `client.is_connected` before running plans to gate execution.
+- If an async publish fails later, strict mode raises `RuntimeError` from the
   callback path so the RunEngine can fail fast.
 
 See the `examples/` directory for complete runnable scripts.
