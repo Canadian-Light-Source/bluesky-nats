@@ -64,7 +64,7 @@ independent of any particular publisher:
 - `CoroutineExecutor` — manages a dedicated background asyncio event loop; now
   accepts an optional `loop` argument to reuse an externally managed loop
 - `AsyncPublishManager` — owns publish-futures tracking, strict-mode error
-  latching, health reporting, `flush_publishes`, `close`, and
+  latching, health reporting, `flush_outbox`, `close`, and
   `shutdown_callback`; can be shared between a publisher and a KV setter
 - `PublisherHealth` — health snapshot dataclass (moved here from `nats_publisher`)
 

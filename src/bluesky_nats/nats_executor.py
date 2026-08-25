@@ -170,7 +170,7 @@ class AsyncPublishManager:
         self._record_strict_error(exception)
         logger.debug(f"NATS publish future failed: {exception!s}")
 
-    def flush_publishes(self, timeout: float = NATS_TIMEOUT) -> bool:
+    def flush_outbox(self, timeout: float = NATS_TIMEOUT) -> bool:
         deadline = time.monotonic() + timeout
         had_failure = False
         while True:
@@ -222,7 +222,7 @@ class AsyncPublishManager:
         )
 
     def close(self, timeout: float = NATS_TIMEOUT) -> bool:
-        return self.flush_publishes(timeout=timeout)
+        return self.flush_outbox(timeout=timeout)
 
     def shutdown_callback(
         self, *, timeout: float = NATS_TIMEOUT, shutdown_executor: bool = False

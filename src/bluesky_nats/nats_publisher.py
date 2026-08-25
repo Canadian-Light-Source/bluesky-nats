@@ -89,8 +89,8 @@ class NATSPublisher(Publisher):
     def _on_publish_done(self, future: Future[Any]) -> None:
         self.manager._on_publish_done(future)  # noqa: SLF001
 
-    def flush_publishes(self, timeout: float = NATS_TIMEOUT) -> bool:
-        return self.manager.flush_publishes(timeout=timeout)
+    def flush_outbox(self, timeout: float = NATS_TIMEOUT) -> bool:
+        return self.manager.flush_outbox(timeout=timeout)
 
     def close(self, timeout: float = NATS_TIMEOUT) -> bool:
         return self.manager.close(timeout=timeout)

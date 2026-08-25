@@ -238,7 +238,7 @@ def test_close_returns_false_when_publish_future_failed() -> None:
     assert closed is False
 
 
-def test_flush_publishes_returns_false_on_failed_future_and_continues(mock_executor) -> None:
+def test_flush_outbox_returns_false_on_failed_future_and_continues(mock_executor) -> None:
     """Flush drains all pending futures and reports failure when one publish fails."""
     publisher = _make_publisher(mock_executor)
 
@@ -250,12 +250,12 @@ def test_flush_publishes_returns_false_on_failed_future_and_continues(mock_execu
     publisher.manager._publish_futures.add(failed_future)  # noqa: SLF001
     publisher.manager._publish_futures.add(ok_future)  # noqa: SLF001
 
-    flushed = publisher.flush_publishes(timeout=1)
+    flushed = publisher.flush_outbox(timeout=1)
     assert flushed is False
     assert not publisher.manager._publish_futures  # noqa: SLF001
 
 
-def test_flush_publishes_returns_false_on_cancelled_future(mock_executor) -> None:
+def test_flush_outbox_returns_false_on_cancelled_future(mock_executor) -> None:
     """Flush treats cancelled publish futures as failures without raising."""
     publisher = _make_publisher(mock_executor)
 
@@ -264,7 +264,7 @@ def test_flush_publishes_returns_false_on_cancelled_future(mock_executor) -> Non
 
     publisher.manager._publish_futures.add(cancelled_future)  # noqa: SLF001
 
-    flushed = publisher.flush_publishes(timeout=1)
+    flushed = publisher.flush_outbox(timeout=1)
     assert flushed is False
     assert not publisher.manager._publish_futures  # noqa: SLF001
 
@@ -354,21 +354,21 @@ def test_record_strict_error_does_not_overwrite_first_error(mock_executor) -> No
         assert publisher.manager._strict_error is first  # noqa: SLF001
 
 
-def test_flush_publishes_returns_false_on_timeout_with_zero_deadline(mock_executor) -> None:
-    """flush_publishes returns False immediately when the deadline is already past."""
+def test_flush_outbox_returns_false_on_timeout_with_zero_deadline(mock_executor) -> None:
+    """flush_outbox returns False immediately when the deadline is already past."""
     publisher = _make_publisher(mock_executor)
     pending: Future[None] = Future()
     publisher.manager._publish_futures.add(pending)  # noqa: SLF001
-    result = publisher.flush_publishes(timeout=0)
+    result = publisher.flush_outbox(timeout=0)
     assert result is False
 
 
-def test_flush_publishes_returns_false_on_future_timeout(mock_executor) -> None:
-    """flush_publishes returns False when waiting for a future result times out."""
+def test_flush_outbox_returns_false_on_future_timeout(mock_executor) -> None:
+    """flush_outbox returns False when waiting for a future result times out."""
     publisher = _make_publisher(mock_executor)
     pending: Future[None] = Future()  # never resolved
     publisher.manager._publish_futures.add(pending)  # noqa: SLF001
-    result = publisher.flush_publishes(timeout=0.01)
+    result = publisher.flush_outbox(timeout=0.01)
     assert result is False
 
 
