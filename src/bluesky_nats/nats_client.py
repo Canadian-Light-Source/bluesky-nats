@@ -55,7 +55,8 @@ def connect_client_sync(
         executor = CoroutineExecutor()
         client = connect_client_sync(executor)
         js = client.jetstream()
-        publisher = NATSPublisher(executor, client, js)
+        manager = AsyncPublishManager(executor, client, strict_publish=True)
+        publisher = NATSPublisher(manager=manager, js=js)
     """
     cfg = config or NATSClientConfig()
     servers = cfg.servers if isinstance(cfg.servers, list) else [cfg.servers]
