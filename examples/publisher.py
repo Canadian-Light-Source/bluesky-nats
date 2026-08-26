@@ -3,12 +3,12 @@ import logging
 import os
 import sys
 
-from bluesky.log import logger
+import nats
 from bluesky.run_engine import RunEngine
 
-from bluesky_nats.nats_client import NATSClientConfig, connect_sync
-from bluesky_nats.nats_executor import AsyncPublishManager, CoroutineExecutor
 from bluesky_nats.nats_publisher import NATSPublisher
+from bluesky_nats.nats_runtime import NatsRuntime
+from bluesky_nats.outbox import Delivery, Outbox
 
 
 # Some basic logging setup to show colored log messages in the console.
@@ -57,18 +57,16 @@ if __name__ == "__main__":
     # Set up the RunEngine and the NATS publisher,
     # then execute a simple plan to demonstrate publishing metadata and data to NATS.
     RE = RunEngine({})
-    config = NATSClientConfig(servers=["nats://localhost:4222"])
-    executor = CoroutineExecutor()
-    client, js = connect_sync(executor, config)
-    manager = AsyncPublishManager(executor, client, strict_publish=True)
-    nats_publisher = NATSPublisher(manager=manager, js=js, subject_factory="events.nats-bluesky")
 
-    atexit.register(nats_publisher.shutdown_callback(timeout=10, shutdown_executor=True))
+    # NATS I/O runs on its own thread and loop, never the RunEngine's.
+    runtime = NatsRuntime("nats-publish")
+    client = runtime.connect(nats.connect("nats://localhost:4222"))
+    js = client.jetstream()
 
-    # Fail fast before executing any plans: publishing is mandatory in this setup.
-    if not client.is_connected:
-        logger.error("Failed to connect to NATS")
-        sys.exit(1)
+    outbox = Outbox(runtime, client, delivery=Delivery.CRITICAL)
+    nats_publisher = NATSPublisher(outbox, js=js, subject_factory="events.nats-bluesky")
+
+    atexit.register(runtime.close)
 
     RE.subscribe(nats_publisher)
 

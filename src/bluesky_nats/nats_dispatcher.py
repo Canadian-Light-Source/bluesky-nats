@@ -1,15 +1,12 @@
 import asyncio
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
-from dataclasses import fields
 from typing import TYPE_CHECKING, Any
 
 from bluesky.run_engine import Dispatcher
 from event_model import DocumentNames
 from nats.aio.client import Client
 from ormsgpack import unpackb
-
-from bluesky_nats.nats_client import NATSClientConfig
 
 
 if TYPE_CHECKING:
@@ -20,15 +17,16 @@ class NATSDispatcher(Dispatcher):
     def __init__(
         self,
         subject: str,
-        client_config: NATSClientConfig | None = None,
+        servers: str | list[str] = "nats://localhost:4222",
         stream_name: str | None = "bluesky",
         loop: asyncio.AbstractEventLoop | None = None,
         deserializer: Callable = unpackb,
+        **connect_options: Any,
     ):
         self._subject = subject
         self._stream_name = stream_name
-
-        self._client_config = client_config if client_config is not None else NATSClientConfig()
+        self._servers = servers if isinstance(servers, list) else [servers]
+        self._connect_options = connect_options
 
         self._deserializer = deserializer
         self.loop = loop or asyncio.get_event_loop()
@@ -56,13 +54,8 @@ class NATSDispatcher(Dispatcher):
         self._task = self.loop.create_task(self._poll())
 
     async def connect(self) -> None:
-        servers = self._client_config.servers
-        server_list = servers if isinstance(servers, list) else [servers]
-        kwargs = {
-            f.name: getattr(self._client_config, f.name) for f in fields(self._client_config) if f.name != "servers"
-        }
         self._nc = Client()
-        await self._nc.connect(servers=server_list, **kwargs)
+        await self._nc.connect(servers=self._servers, **self._connect_options)
         self._js = self._nc.jetstream()
 
     async def _subscribe(self) -> None:

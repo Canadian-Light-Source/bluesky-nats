@@ -7,18 +7,16 @@ from bluesky.log import logger
 from nats.js.errors import NoStreamResponseError
 from ormsgpack import OPT_NAIVE_UTC, OPT_SERIALIZE_NUMPY, packb
 
-from bluesky_nats.nats_executor import NATS_TIMEOUT, AsyncPublishManager
+from bluesky_nats.outbox import FLUSH_TIMEOUT
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from concurrent.futures import Future
     from uuid import UUID
 
-    from nats.aio.client import Client
     from nats.js.client import JetStreamContext
 
-    from bluesky_nats.nats_executor import CoroutineSubmittingExecutor, PublisherHealth
+    from bluesky_nats.outbox import Outbox, OutboxHealth
 
 
 class Publisher(ABC):
@@ -33,72 +31,72 @@ class Publisher(ABC):
         """Make instances of this Publisher callable."""
 
     @abstractmethod
-    def close(self, timeout: float = NATS_TIMEOUT) -> bool:
+    def close(self, timeout: float = FLUSH_TIMEOUT) -> bool:
         """Close publisher resources gracefully."""
 
 
 class NATSPublisher(Publisher):
-    """Publisher class using NATS JetStream publish acknowledgements.
+    """Publishes Bluesky documents to JetStream subjects.
 
-    Messages are published by subject and stream routing is handled by the NATS server
-    configuration. This publisher intentionally does not select a stream directly; it
-    uses JetStream publish to obtain `PubAck` confirmation from the server.
+    Subjects are ``<subject_factory>.<document_name>``; stream routing is left to
+    the server. Writes are scheduled without blocking the RunEngine, and the
+    ``stop`` document acts as a delivery barrier where latency does not matter.
     """
 
     def __init__(
         self,
-        manager: AsyncPublishManager,
+        outbox: Outbox,
         js: JetStreamContext,
         subject_factory: Callable[[], str] | str = "events.volatile",
+        *,
+        flush_on_stop: bool = True,
     ) -> None:
-        logger.debug(f"new {self.__class__} instance created.")
-        self.manager = manager
-        self.js: JetStreamContext = js
-        self._subject_factory: str | Callable[[], str] = self.validate_subject_factory(subject_factory)
+        self.outbox = outbox
+        self.js = js
+        self._subject_factory = self.validate_subject_factory(subject_factory)
+        self._flush_on_stop = flush_on_stop
         self._run_id: UUID
 
     def __call__(self, name: str, doc: dict) -> None:
         """Make instances of this Publisher callable."""
-        self.manager.raise_if_strict_error()
+        self.outbox.raise_if_failed()
 
-        subject_factory = self._subject_factory
-        subject = f"{subject_factory}.{name}" if isinstance(subject_factory, str) else f"{subject_factory()}.{name}"
+        factory = self._subject_factory
+        subject = f"{factory}.{name}" if isinstance(factory, str) else f"{factory()}.{name}"
+        self.outbox.record_subject(subject)
 
-        self.manager.record_last_subject(subject)
         self.update_run_id(name, doc)
-        # TODO: maybe worthwhile refactoring to a header factory for higher flexibility.  # noqa: TD002, TD003
         headers = {"run_id": self.run_id}
-
         payload = packb(doc, option=OPT_NAIVE_UTC | OPT_SERIALIZE_NUMPY)
-        self.manager.submit(self.publish(subject=subject, payload=payload, headers=headers))
-        logger.debug(f"NATS publisher state connected={self.manager.is_connected}, js_ready={self.js is not None}")
+        self.outbox.spawn(self.publish(subject=subject, payload=payload, headers=headers))
 
-    # Properties delegating to manager for a stable external interface
+        if name == "stop" and self._flush_on_stop:
+            if not self.outbox.flush():
+                logger.warning("NATS publisher could not flush all documents for this run")
+            self.outbox.raise_if_failed()
+
+    async def publish(self, subject: str, payload: bytes, headers: dict) -> None:
+        """Publish a message to a subject."""
+        try:
+            ack = await self.js.publish(subject=subject, payload=payload, headers=headers)
+            self.outbox.record_ack(subject)
+            logger.debug(f"NATS published: subject={subject}, ack={ack}")
+        except NoStreamResponseError as exception:
+            self.outbox.record_error(exception)
+            logger.exception(f"NATS no stream response: subject={subject}")
+        except Exception as exception:  # noqa: BLE001
+            self.outbox.record_error(exception)
+            logger.exception(f"NATS publish failed: subject={subject}")
+
     @property
-    def executor(self) -> CoroutineSubmittingExecutor:
-        return self.manager.executor
+    def health(self) -> OutboxHealth:
+        return self.outbox.health
 
-    @property
-    def nats_client(self) -> Client:
-        return self.manager.nats_client
+    def flush(self, timeout: float = FLUSH_TIMEOUT) -> bool:
+        return self.outbox.flush(timeout=timeout)
 
-    @property
-    def health(self) -> PublisherHealth:
-        return self.manager.health
-
-    def _on_publish_done(self, future: Future[Any]) -> None:
-        self.manager._on_publish_done(future)  # noqa: SLF001
-
-    def flush_outbox(self, timeout: float = NATS_TIMEOUT) -> bool:
-        return self.manager.flush_outbox(timeout=timeout)
-
-    def close(self, timeout: float = NATS_TIMEOUT) -> bool:
-        return self.manager.close(timeout=timeout)
-
-    def shutdown_callback(
-        self, *, timeout: float = NATS_TIMEOUT, shutdown_executor: bool = False
-    ) -> Callable[[], None]:
-        return self.manager.shutdown_callback(timeout=timeout, shutdown_executor=shutdown_executor)
+    def close(self, timeout: float = FLUSH_TIMEOUT) -> bool:
+        return self.outbox.flush(timeout=timeout)
 
     def update_run_id(self, name: str, doc: dict) -> None:
         if name == "start":
@@ -108,10 +106,6 @@ class NATSPublisher(Publisher):
             raise ValueError(msg)
 
     @property
-    def _is_connected(self) -> bool:
-        return self.manager.is_connected
-
-    @property
     def run_id(self) -> UUID:
         return self._run_id
 
@@ -119,28 +113,15 @@ class NATSPublisher(Publisher):
     def run_id(self, value: UUID) -> None:
         self._run_id = value
 
-    async def publish(self, subject: str, payload: bytes, headers: dict) -> None:
-        """Publish a message to a subject."""
-        try:
-            ack = await self.js.publish(subject=subject, payload=payload, headers=headers)
-            self.manager._record_publish_ack(subject)  # noqa: SLF001
-            logger.debug(f"NATS published: subject={subject}, ack={ack}")
-        except NoStreamResponseError as e:
-            self.manager._record_strict_error(e)  # noqa: SLF001
-            logger.exception(f"NATS no stream response: subject={subject}")
-        except Exception as e:  # noqa: BLE001
-            self.manager._record_strict_error(e)  # noqa: SLF001
-            logger.exception(f"NATS publish failed: subject={subject}")
-
     @staticmethod
     def validate_subject_factory(subject_factory: str | Callable[[], str] | None) -> str | Callable[[], str]:
         """Type check the subject factory."""
         if isinstance(subject_factory, str):
-            return subject_factory  # String is valid
+            return subject_factory
         if callable(subject_factory):
             result = subject_factory()
             if isinstance(result, str):
-                return subject_factory  # Callable returning string is valid
+                return subject_factory
             msg = "Callable must return a string"
             raise TypeError(msg)
         msg = "subject_factory must be a string or a callable"
