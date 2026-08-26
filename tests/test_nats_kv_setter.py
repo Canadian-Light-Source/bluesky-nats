@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -74,12 +75,23 @@ def test_call_empty_payload_uses_unknown_key(setter, mock_kv) -> None:
     assert mock_kv.put.call_args.args[0] == "unknown"
 
 
+def _blocking_put(release: threading.Event):
+    """A put that genuinely blocks until released, unlike an unawaited sleep."""
+
+    async def put(*_args):
+        await asyncio.get_running_loop().run_in_executor(None, release.wait)
+
+    return put
+
+
 def test_call_does_not_block(runtime, mock_kv) -> None:
     """A slow KV bucket must never stall the caller."""
-    mock_kv.put = AsyncMock(side_effect=lambda *_: asyncio.sleep(3600))
+    release = threading.Event()
+    mock_kv.put = _blocking_put(release)
     setter = _make_setter(runtime, mock_kv)
     setter({"key": "value"})  # would hang if it awaited
     assert setter.health.pending == 1
+    release.set()
 
 
 def test_best_effort_never_raises(runtime, mock_kv) -> None:
@@ -99,11 +111,13 @@ def test_critical_delivery_raises(runtime, mock_kv) -> None:
 
 
 def test_overflow_drops_oldest(runtime, mock_kv) -> None:
-    mock_kv.put = AsyncMock(side_effect=lambda *_: asyncio.sleep(3600))
+    release = threading.Event()
+    mock_kv.put = _blocking_put(release)
     setter = _make_setter(runtime, mock_kv, max_pending=2)
     for index in range(5):
         setter({f"key{index}": "value"})
     assert setter.health.dropped == 3
+    release.set()
 
 
 def test_health_reports_connection(runtime, mock_kv) -> None:

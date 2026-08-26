@@ -92,7 +92,34 @@ class NatsRuntime:
     def setup(self, coro: Coroutine[Any, Any, Any], timeout: float = SETUP_TIMEOUT) -> Any:
         """Run a coroutine to completion on the I/O loop and return its result.
 
-        Blocking: intended for construction only, never from a document callback.
+        For construction only -- opening connections, streams and KV buckets. This
+        blocks the calling thread until the coroutine finishes, so it must never
+        appear on a document-callback path; use :meth:`spawn` there instead.
+
+        Two callers would deadlock and are rejected up front rather than left to
+        time out: the runtime's own I/O thread (the loop cannot run the coroutine
+        while it is blocked waiting for it) and the RunEngine loop thread (callbacks
+        run inline on it, so blocking there stalls the RunEngine itself).
+
+        Parameters
+        ----------
+        coro : Coroutine
+            Awaited on this runtime's loop.
+        timeout : float, optional
+            Seconds to wait for completion.
+
+        Returns
+        -------
+        Any
+            Whatever ``coro`` returns.
+
+        Raises
+        ------
+        RuntimeError
+            If called from the I/O thread, from the RunEngine loop, or after
+            :meth:`close`.
+        TimeoutError
+            If ``coro`` does not finish within ``timeout``.
         """
         self._reject_if_on_io_thread("setup()")
         if in_bluesky_event_loop():
@@ -131,7 +158,39 @@ class NatsRuntime:
         return self.adopt_client(client)
 
     def close(self, timeout: float = SHUTDOWN_TIMEOUT) -> bool:
-        """Drain the owned client, stop the loop and join the thread. Idempotent."""
+        """Drain the owned client, stop the loop and join the I/O thread.
+
+        Shutdown is always explicit; see the class docstring for why there is no
+        ``__del__``. Safe to call twice, and registered with :mod:`atexit` as a
+        backstop for callers who forget.
+
+        Order matters. The client is drained *before* the loop stops, because a
+        stopped loop can no longer run the drain. ``drain()`` is used rather than
+        ``close()`` because it flushes writes the server has not yet acknowledged;
+        ``close()`` would discard them, which defeats CRITICAL delivery.
+
+        A drain failure is logged but does not abort the rest of the sequence: the
+        thread and loop must be released regardless, otherwise a failing connection
+        would leak both.
+
+        Parameters
+        ----------
+        timeout : float, optional
+            Seconds allowed for the client drain. Joining the thread is bounded
+            separately by ``JOIN_TIMEOUT``.
+
+        Returns
+        -------
+        bool
+            True if the client drained cleanly and the thread exited. False if
+            writes may have been lost or the thread outlived its join timeout;
+            in both cases the runtime is still marked closed.
+
+        Raises
+        ------
+        RuntimeError
+            If called from this runtime's own I/O thread, which would self-join.
+        """
         self._reject_if_on_io_thread("close()")
         with self._state_lock:
             if self._closed:

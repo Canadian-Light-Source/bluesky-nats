@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
@@ -86,10 +87,16 @@ def test_call_builds_subject_from_factory(runtime) -> None:
 
 def test_call_does_not_block(runtime) -> None:
     """The RunEngine callback path must return without waiting on I/O."""
+    release = threading.Event()
+
+    async def blocked_publish(**_kwargs):
+        await asyncio.get_running_loop().run_in_executor(None, release.wait)
+
     publisher = _make_publisher(runtime)
-    publisher.js.publish = AsyncMock(side_effect=lambda **_: asyncio.sleep(3600))
+    publisher.js.publish = blocked_publish
     publisher("start", {"uid": uuid4()})  # would hang if it awaited
     assert publisher.health.pending == 1
+    release.set()
 
 
 def test_call_raises_after_latched_error_in_critical(runtime) -> None:

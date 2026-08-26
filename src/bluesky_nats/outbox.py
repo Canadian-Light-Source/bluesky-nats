@@ -65,12 +65,21 @@ class Outbox:
         self._client = client
         self._delivery = delivery
         self._max_pending = max_pending if max_pending is not None else _default_max_pending(delivery)
+        if self._max_pending < 1:
+            msg = "max_pending must be at least 1"
+            raise ValueError(msg)
 
-        self._pending: dict[Future[Any], float] = {}
+        # An ordered set, not a mapping: the values are unused.
+        # A list/deque looks like the obvious choice here and is the wrong one. Futures
+        # settle out of order, so _on_done removes from the middle once per write --
+        # O(n) for a list/deque (~1.5us at 500 entries, under the lock) versus O(1) here.
+        # Insertion order still gives the oldest entry in O(1) for eviction.
+        self._pending: dict[Future[Any], None] = {}
         self._pending_lock = Lock()
         self._dropped = 0
 
         self._error_lock = Lock()
+        # BaseException, not Exception: CancelledError derives from BaseException.
         self._latched_error: BaseException | None = None
         self._last_error: str | None = None
         self._last_error_at: float | None = None
@@ -85,32 +94,32 @@ class Outbox:
     def is_connected(self) -> bool:
         return self._client.is_connected
 
-    def spawn(self, coro: Coroutine[Any, Any, Any]) -> Future[Any] | None:
+    def spawn(self, coro: Coroutine[Any, Any, Any]) -> Future[Any]:
         """Schedule a write and return immediately.
 
-        Returns ``None`` if a BEST_EFFORT submission was dropped on overflow.
+        A BEST_EFFORT submission evicts the oldest pending write when at capacity.
         """
-        if self._delivery is Delivery.BEST_EFFORT and not self._make_room():
-            coro.close()
-            return None
+        if self._delivery is Delivery.BEST_EFFORT:
+            self._evict_oldest()
 
         future = self._runtime.spawn(coro)
         with self._pending_lock:
-            self._pending[future] = time.monotonic()
+            self._pending[future] = None
         future.add_done_callback(self._on_done)
         return future
 
-    def _make_room(self) -> bool:
-        """Evict the oldest pending write when at capacity. False if nothing could be freed."""
+    def _evict_oldest(self) -> None:
+        """Drop the oldest pending write if at capacity."""
         with self._pending_lock:
             if len(self._pending) < self._max_pending:
-                return True
-            oldest = min(self._pending, key=self._pending.__getitem__)
+                return
+            oldest = next(iter(self._pending))
             del self._pending[oldest]
             self._dropped += 1
+            dropped = self._dropped
+        # Outside the lock: cancel() invokes done callbacks, which re-enter _on_done.
         oldest.cancel()
-        logger.debug(f"NATS outbox dropped oldest pending write (total dropped={self._dropped})")
-        return True
+        logger.debug(f"NATS outbox dropped oldest pending write (total dropped={dropped})")
 
     def raise_if_failed(self) -> None:
         """Re-raise the first latched CRITICAL failure. No-op for BEST_EFFORT."""

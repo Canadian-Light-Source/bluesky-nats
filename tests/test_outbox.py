@@ -165,3 +165,9 @@ def test_default_max_pending_differs_by_delivery(runtime) -> None:
     critical = _outbox(runtime, Delivery.CRITICAL)
     best_effort = _outbox(runtime, Delivery.BEST_EFFORT)
     assert critical._max_pending > best_effort._max_pending  # noqa: SLF001
+
+
+def test_rejects_zero_max_pending(runtime) -> None:
+    """A capacity of zero has no oldest entry to evict."""
+    with pytest.raises(ValueError, match="max_pending must be at least 1"):
+        _outbox(runtime, Delivery.BEST_EFFORT, max_pending=0)
