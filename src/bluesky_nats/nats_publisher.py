@@ -59,8 +59,6 @@ class NATSPublisher(Publisher):
 
     def __call__(self, name: str, doc: dict) -> None:
         """Make instances of this Publisher callable."""
-        self.outbox.raise_if_failed()
-
         factory = self._subject_factory
         subject = f"{factory}.{name}" if isinstance(factory, str) else f"{factory()}.{name}"
         self.outbox.record_subject(subject)
@@ -68,12 +66,7 @@ class NATSPublisher(Publisher):
         self.update_run_id(name, doc)
         headers = {"run_id": self.run_id}
         payload = packb(doc, option=OPT_NAIVE_UTC | OPT_SERIALIZE_NUMPY)
-        self.outbox.spawn(self.publish(subject=subject, payload=payload, headers=headers))
-
-        if name == "stop" and self._flush_on_stop:
-            if not self.outbox.flush():
-                logger.warning("NATS publisher could not flush all documents for this run")
-            self.outbox.raise_if_failed()
+        self.outbox.spawn_and_wait(self.publish(subject=subject, payload=payload, headers=headers))
 
     async def publish(self, subject: str, payload: bytes, headers: dict) -> None:
         """Publish a message to a subject."""
@@ -81,12 +74,12 @@ class NATSPublisher(Publisher):
             ack = await self.js.publish(subject=subject, payload=payload, headers=headers)
             self.outbox.record_ack(subject)
             logger.debug(f"NATS published: subject={subject}, ack={ack}")
-        except NoStreamResponseError as exception:
-            self.outbox.record_error(exception)
+        except NoStreamResponseError:
             logger.exception(f"NATS no stream response: subject={subject}")
-        except Exception as exception:  # noqa: BLE001
-            self.outbox.record_error(exception)
+            raise
+        except BaseException:
             logger.exception(f"NATS publish failed: subject={subject}")
+            raise
 
     @property
     def health(self) -> OutboxHealth:

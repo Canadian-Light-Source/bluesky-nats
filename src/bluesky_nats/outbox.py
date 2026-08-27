@@ -108,6 +108,21 @@ class Outbox:
         future.add_done_callback(self._on_done)
         return future
 
+    def spawn_and_wait(self, coro: Coroutine[Any, Any, Any], timeout: float = FLUSH_TIMEOUT) -> None:
+        """Schedule a write and block until it settles.
+
+        Raises
+        ------
+        TimeoutError
+            If the write does not settle within ``timeout``.
+        CancelledError
+            If the write was cancelled.
+        Exception
+            If the write raised an exception.
+        """
+        future = self.spawn(coro)
+        future.result(timeout=timeout)
+
     def _evict_oldest(self) -> None:
         """Drop the oldest pending write if at capacity."""
         with self._pending_lock:

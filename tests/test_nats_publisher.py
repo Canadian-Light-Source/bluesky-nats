@@ -55,17 +55,17 @@ async def test_publish_records_ack(publisher) -> None:
 
 
 @pytest.mark.asyncio
-async def test_publish_records_no_stream_response(publisher) -> None:
+async def test_publish_raises_no_stream_response(publisher) -> None:
     publisher.js.publish.side_effect = NoStreamResponseError()
-    await publisher.publish("subject", b"payload", {})
-    assert publisher.health.last_error is not None
+    with pytest.raises(NoStreamResponseError):
+        await publisher.publish("subject", b"payload", {})
 
 
 @pytest.mark.asyncio
-async def test_publish_records_generic_error(publisher) -> None:
+async def test_publish_raises_generic_error(publisher) -> None:
     publisher.js.publish.side_effect = RuntimeError("boom")
-    await publisher.publish("subject", b"payload", {})
-    assert "boom" in publisher.health.last_error
+    with pytest.raises(RuntimeError, match="boom"):
+        await publisher.publish("subject", b"payload", {})
 
 
 def test_call_schedules_publish(runtime) -> None:
@@ -85,34 +85,42 @@ def test_call_builds_subject_from_factory(runtime) -> None:
     assert publisher.js.publish.call_args.kwargs["subject"] == "events.test.start"
 
 
-def test_call_does_not_block(runtime) -> None:
-    """The RunEngine callback path must return without waiting on I/O."""
+def test_call_blocks_until_publish_completes(runtime) -> None:
+    """The callback waits for the publish and therefore preserves ordering."""
     release = threading.Event()
+    started = threading.Event()
 
     async def blocked_publish(**_kwargs):
+        started.set()
         await asyncio.get_running_loop().run_in_executor(None, release.wait)
 
     publisher = _make_publisher(runtime)
     publisher.js.publish = blocked_publish
-    publisher("start", {"uid": uuid4()})  # would hang if it awaited
-    assert publisher.health.pending == 1
+    callback = threading.Thread(target=publisher, args=("start", {"uid": uuid4()}))
+    callback.start()
+    assert started.wait(timeout=1.0)
+    assert callback.is_alive()
     release.set()
+    callback.join(timeout=1.0)
+    assert not callback.is_alive()
 
 
-def test_call_raises_after_latched_error_in_critical(runtime) -> None:
-    publisher = _make_publisher(runtime, delivery=Delivery.CRITICAL)
+def test_call_raises_publish_error(runtime) -> None:
+    publisher = _make_publisher(runtime)
     publisher.run_id = uuid4()
-    publisher.outbox.record_error(RuntimeError("publish failed"))
+    publisher.js.publish.side_effect = RuntimeError("publish failed")
 
-    with pytest.raises(RuntimeError, match="NATS delivery failure: publish failed"):
+    with pytest.raises(RuntimeError, match="publish failed"):
         publisher("event", {"time": 0})
 
 
-def test_call_does_not_raise_in_best_effort(runtime) -> None:
-    publisher = _make_publisher(runtime, delivery=Delivery.BEST_EFFORT)
+def test_call_raises_no_stream_response(runtime) -> None:
+    publisher = _make_publisher(runtime)
     publisher.run_id = uuid4()
-    publisher.outbox.record_error(RuntimeError("publish failed"))
-    publisher("event", {"time": 0})
+    publisher.js.publish.side_effect = NoStreamResponseError()
+
+    with pytest.raises(NoStreamResponseError):
+        publisher("event", {"time": 0})
 
 
 def test_stop_document_flushes(runtime) -> None:
