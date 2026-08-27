@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from concurrent.futures import CancelledError as FutureCancelledError
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
@@ -79,8 +78,7 @@ class Outbox:
         self._dropped = 0
 
         self._error_lock = Lock()
-        # BaseException, not Exception: CancelledError derives from BaseException.
-        self._latched_error: BaseException | None = None
+        self._latched_error: Exception | None = None
         self._last_error: str | None = None
         self._last_error_at: float | None = None
         self._last_ack_at: float | None = None
@@ -147,7 +145,7 @@ class Outbox:
         msg = f"NATS delivery failure: {exception!s}"
         raise RuntimeError(msg) from exception
 
-    def record_error(self, exception: BaseException) -> None:
+    def record_error(self, exception: Exception) -> None:
         with self._error_lock:
             self._last_error = f"{type(exception).__name__}: {exception!s}"
             self._last_error_at = time.time()
@@ -191,9 +189,6 @@ class Outbox:
             except FutureTimeoutError:
                 logger.warning(f"NATS flush exceeded {timeout}s")
                 return False
-            except FutureCancelledError as exception:
-                succeeded = False
-                self.record_error(exception)
             except Exception as exception:  # noqa: BLE001
                 succeeded = False
                 self.record_error(exception)
