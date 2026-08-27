@@ -39,22 +39,16 @@ class NATSPublisher(Publisher):
     """Publishes Bluesky documents to JetStream subjects.
 
     Subjects are ``<subject_factory>.<document_name>``; stream routing is left to
-    the server. Writes are scheduled without blocking the RunEngine, and the
-    ``stop`` document acts as a delivery barrier where latency does not matter.
+    the server. Writes complete synchronously so document order and publish
+    failures are visible directly to the RunEngine callback.
     """
 
     def __init__(
-        self,
-        outbox: Outbox,
-        js: JetStreamContext,
-        subject_factory: Callable[[], str] | str = "events.volatile",
-        *,
-        flush_on_stop: bool = True,
+        self, outbox: Outbox, js: JetStreamContext, subject_factory: Callable[[], str] | str = "events.volatile"
     ) -> None:
         self.outbox = outbox
         self.js = js
         self._subject_factory = self.validate_subject_factory(subject_factory)
-        self._flush_on_stop = flush_on_stop
         self._run_id: UUID
 
     def __call__(self, name: str, doc: dict) -> None:
@@ -77,7 +71,7 @@ class NATSPublisher(Publisher):
         except NoStreamResponseError:
             logger.exception(f"NATS no stream response: subject={subject}")
             raise
-        except BaseException:
+        except Exception:
             logger.exception(f"NATS publish failed: subject={subject}")
             raise
 

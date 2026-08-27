@@ -125,15 +125,10 @@ The same classes serve the "KV is also critical" case -- pass
 
 ## The `stop`-document barrier
 
-Publishing must not block mid-scan, but delivery must still be guaranteed. These
-are reconciled by flushing at run boundaries:
-
-- During the run: `spawn()` and return immediately; errors are latched and raised
-  on the _next_ document.
-- On the `stop` document: `flush()` blocks until every write settles.
-
-Latency does not matter at a run boundary, so this buys a hard delivery guarantee
-for free. Disable with `flush_on_stop=False`.
+The publisher uses `spawn_and_wait()` for every document. Each callback blocks
+until its publish settles, so documents are published in sequence and failures
+are raised directly from the callback. There is no separate stop-document
+flush barrier.
 
 ## Container choice in `Outbox._pending`
 

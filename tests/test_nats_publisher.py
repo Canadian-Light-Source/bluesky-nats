@@ -21,10 +21,10 @@ def runtime():
     rt.close()
 
 
-def _make_publisher(runtime, *, delivery=Delivery.CRITICAL, subject_factory="events.volatile", flush_on_stop=False):
+def _make_publisher(runtime, *, delivery=Delivery.CRITICAL, subject_factory="events.volatile"):
     client = Mock(spec=Client, is_connected=True)
     outbox = Outbox(runtime, client, delivery=delivery)
-    return NATSPublisher(outbox, js=AsyncMock(), subject_factory=subject_factory, flush_on_stop=flush_on_stop)
+    return NATSPublisher(outbox, js=AsyncMock(), subject_factory=subject_factory)
 
 
 @pytest.fixture
@@ -123,9 +123,9 @@ def test_call_raises_no_stream_response(runtime) -> None:
         publisher("event", {"time": 0})
 
 
-def test_stop_document_flushes(runtime) -> None:
-    """The stop document is a delivery barrier where latency does not matter."""
-    publisher = _make_publisher(runtime, flush_on_stop=True)
+def test_stop_document_is_published_synchronously(runtime) -> None:
+    """The stop document is complete when its callback returns."""
+    publisher = _make_publisher(runtime)
     run_id = uuid4()
     publisher("start", {"uid": run_id})
     publisher("stop", {"run_start": run_id})

@@ -101,7 +101,7 @@ class NATSDispatcher(Dispatcher):
             setup_task = self.loop.create_task(self._setup())
             self.loop.run_until_complete(setup_task)
             self.loop.run_forever()
-        except BaseException as exception:
+        except Exception as exception:
             print(f"Unexpected error in START: {exception}")
             self.loop.run_until_complete(self.stop())
             raise
