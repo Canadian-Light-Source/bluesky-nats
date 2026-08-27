@@ -167,8 +167,10 @@ class Outbox:
         if future.cancelled():
             return
         exception = future.exception()
-        if exception is not None:
+        if isinstance(exception, Exception):
             self.record_error(exception)
+        elif exception is not None:
+            raise exception
 
     def flush(self, timeout: float = FLUSH_TIMEOUT) -> bool:
         """Block until every pending write settles. Use at run boundaries only."""
