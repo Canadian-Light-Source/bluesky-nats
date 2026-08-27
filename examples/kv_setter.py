@@ -7,7 +7,7 @@ and NATS connections. A slow or unavailable KV bucket can never delay publishing
 import atexit
 
 import nats
-from bluesky.plans import count
+from bluesky.plans import count, scan
 from bluesky.run_engine import RunEngine
 
 from bluesky_nats.nats_kv_setter import NATSKVSetter
@@ -18,6 +18,7 @@ from bluesky_nats.outbox import Delivery, Outbox
 
 SERVERS = "nats://localhost:4222"
 KV_BUCKET = "live"
+
 
 if __name__ == "__main__":
     RE = RunEngine({})
@@ -51,12 +52,19 @@ if __name__ == "__main__":
     pattern_generator = PatternGenerator()
     with init_devices():
         stage = SimStage(pattern_generator)
-        pdet = SimPointDetector(pattern_generator)
+        pdet = SimPointDetector(pattern_generator, num_channels=13)
+
+    # make this go a little faster than the default 0.1s, so we can see the KV setter keep up
+    RE.loop.call_soon(pdet.acquire_time.set, 0)
 
     RE.loop.call_soon(stage.x.subscribe, kv_setter)
     RE.loop.call_soon(stage.y.subscribe, kv_setter)
+    for s in pdet.channel.values():
+        RE.loop.call_soon(s.value.subscribe, kv_setter)
 
-    RE(count([pdet], num=5))
+    RE(count([pdet], num=23))
+
+    RE(scan([pdet], stage.x, -1, 1, 13))
 
     print(f"publisher: {publisher.health}")
     print(f"kv setter: {kv_setter.health}")

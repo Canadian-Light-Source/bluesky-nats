@@ -78,7 +78,7 @@ if __name__ == "__main__":
     # Send all metadata/data captured to the BestEffortCallback.
     RE.subscribe(bec)
 
-    from bluesky.plans import count
+    from bluesky.plans import count, scan
     from ophyd_async.core import init_devices
     from ophyd_async.sim import PatternGenerator, SimPointDetector, SimStage
 
@@ -103,7 +103,7 @@ if __name__ == "__main__":
 
     RE(count(dets, num=5))
 
-    # RE(scan([pdet], stage.x, -1, 4, 6))
+    RE(scan([pdet], stage.x, -1, 4, 6))
 
     # health API is available to check the connection status of the publisher.
     print(f"{nats_publisher.health}")
