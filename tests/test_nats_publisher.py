@@ -134,13 +134,10 @@ def test_stop_document_is_published_synchronously(runtime) -> None:
 
 @given(uuid=uuids(version=4))
 def test_update_run_id_success(uuid) -> None:
-    rt = NatsRuntime("run-id-test")
-    try:
+    with NatsRuntime("run-id-test") as rt:
         publisher = _make_publisher(rt)
         publisher.update_run_id("start", {"uid": uuid})
         assert publisher.run_id == uuid
-    finally:
-        rt.close()
 
 
 def test_update_run_id_mismatch_raises(publisher) -> None:
