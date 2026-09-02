@@ -171,4 +171,5 @@ def test_validate_subject_factory_exceptions() -> None:
 def test_close_flushes(runtime) -> None:
     publisher = _make_publisher(runtime)
     publisher("start", {"uid": uuid4()})
-    assert publisher.close(timeout=5.0) is True
+    result = publisher.close(timeout=5.0)
+    assert result is True
