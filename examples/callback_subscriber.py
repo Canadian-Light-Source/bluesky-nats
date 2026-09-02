@@ -2,17 +2,13 @@ import asyncio
 
 from bluesky.callbacks.best_effort import BestEffortCallback
 
-from bluesky_nats.nats_client import NATSClientConfig
 from bluesky_nats.nats_dispatcher import NATSDispatcher
-
-
-client_config = NATSClientConfig()
 
 
 # context manager implementation
 async def async_main() -> None:
     """Main function of Bluesky callback subscription."""
-    async with NATSDispatcher(subject="events.nats-bluesky.>", client_config=client_config) as dispatcher:
+    async with NATSDispatcher(subject="events.nats-bluesky.>", servers="nats://localhost:4222") as dispatcher:
         # Your code here --------------------------------
         dispatcher.subscribe(BestEffortCallback())
         try:

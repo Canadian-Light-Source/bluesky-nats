@@ -3,11 +3,12 @@ import logging
 import os
 import sys
 
-from bluesky.log import logger
+import nats
 from bluesky.run_engine import RunEngine
 
-from bluesky_nats.nats_client import NATSClientConfig
-from bluesky_nats.nats_publisher import CoroutineExecutor, NATSPublisher
+from bluesky_nats.nats_publisher import NATSPublisher
+from bluesky_nats.nats_runtime import NatsRuntime
+from bluesky_nats.outbox import Delivery, Outbox
 
 
 # Some basic logging setup to show colored log messages in the console.
@@ -56,18 +57,16 @@ if __name__ == "__main__":
     # Set up the RunEngine and the NATS publisher,
     # then execute a simple plan to demonstrate publishing metadata and data to NATS.
     RE = RunEngine({})
-    config = NATSClientConfig(servers=["nats://localhost:4222"])
-    executor = CoroutineExecutor()
-    nats_publisher = NATSPublisher(
-        client_config=config, executor=executor, subject_factory="events.nats-bluesky", strict_publish=True
-    )
 
-    atexit.register(nats_publisher.shutdown_callback(timeout=10, shutdown_executor=True))
+    # NATS I/O runs on its own thread and loop, never the RunEngine's.
+    runtime = NatsRuntime("nats-publish")
+    client = runtime.connect(nats.connect("nats://localhost:4222"))
+    js = client.jetstream()
 
-    # Fail fast before executing any plans: publishing is mandatory in this setup.
-    if not nats_publisher.ensure_connection(timeout=10):
-        logger.error("Failed to connect to NATS")
-        sys.exit(1)
+    outbox = Outbox(runtime, client, delivery=Delivery.CRITICAL)
+    nats_publisher = NATSPublisher(outbox, js=js, subject_factory="events.nats-bluesky")
+
+    atexit.register(runtime.close)
 
     RE.subscribe(nats_publisher)
 
@@ -79,12 +78,32 @@ if __name__ == "__main__":
     # Send all metadata/data captured to the BestEffortCallback.
     RE.subscribe(bec)
 
-    from bluesky.plans import count
-    from ophyd.sim import det1  # type: ignore  # noqa: PGH003
+    from bluesky.plans import count, scan
+    from ophyd_async.core import init_devices
+    from ophyd_async.sim import PatternGenerator, SimPointDetector, SimStage
 
-    dets = [det1]  # a list of any number of detectors
+    # Make a pattern generator that uses the motor positions
+    # to make a test pattern. This simulates the real life process
+    # of X-ray scattering off a sample
+    pattern_generator = PatternGenerator()
 
-    RE(count(dets))
+    # All Devices created within this block will be
+    # connected and named at the end of the with block
+    with init_devices():
+        # Create a sample stage with X and Y motors that report their positions
+        # to the pattern generator
+        stage = SimStage(pattern_generator)
+        # Make a detector device that gives the point value of the pattern generator
+        # when triggered
+        pdet = SimPointDetector(pattern_generator)
+        # Make a detector device that gives a gaussian blob with intensity based
+        # on the point value of the pattern generator when triggered
+
+    dets = [pdet]  # a list of any number of detectors
+
+    RE(count(dets, num=5))
+
+    RE(scan([pdet], stage.x, -1, 4, 6))
 
     # health API is available to check the connection status of the publisher.
     print(f"{nats_publisher.health}")

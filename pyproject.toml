@@ -23,13 +23,21 @@ classifiers = [
 
 dynamic = ["version"]
 
-dependencies = ["bluesky>=1.14.0", "nats-py>=2.14.0", "ormsgpack>=1.12.0"]
+dependencies = [
+    "bluesky>=1.15.1",
+    "nats-py>=2.15.0",
+    "ormsgpack>=1.12.0",
+]
 
 [project.urls]
 GitHub = "https://github.com/Canadian-Light-Source/bluesky-nats"
 
 [project.optional-dependencies]
-examples = ["matplotlib>=3.9.2", "ophyd>=1.9.0"]
+examples = [
+    "h5py>=3.16.0",
+    "matplotlib>=3.9.2",
+    "ophyd-async>=0.21.1",
+]
 
 [dependency-groups]
 dev = [
@@ -44,7 +52,7 @@ dev = [
     "pyyaml>=6.0.2",
     "ruff>=0.15.4",
     "toml>=0.10.2",
-    "ty>=0.0.19",
+    "ty>=0.0.73",
 ]
 
 [tool.uv]
@@ -64,6 +72,7 @@ ignore = [
     "ANN003",  # Missing type annotation for `**kwargs`
     "ANN401",  # allow `Any`
     "ANN204",  # add return type None to __init__
+    "CPY001",
     "D100",
     "D101",
     "D102",
@@ -124,10 +133,11 @@ addopts = "-v"
 [tool.coverage.run]
 branch = true
 source = ["src/bluesky_nats"]
-omit = ["src/bluesky_nats/_version.py", "tests/*", ".venv/*"]
+omit = ["src/bluesky_nats/_version.py", "examples/*", "tests/*", ".venv/*"]
 
 [tool.coverage.report]
-omit = ["src/bluesky_nats/_version.py", "tests/*", ".venv/*"]
+omit = ["src/bluesky_nats/_version.py", "examples/*", "tests/*", ".venv/*"]
+exclude_also = ["if __name__ == \"__main__\":"]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

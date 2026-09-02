@@ -1,46 +1,38 @@
 import asyncio
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
-from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from bluesky.run_engine import Dispatcher
 from event_model import DocumentNames
-from nats.aio.client import Client as NATS  # noqa: N814
-from nats.errors import TimeoutError as NATS_TimeoutError
-from nats.js.api import ConsumerConfig, DeliverPolicy
+from nats.aio.client import Client
 from ormsgpack import unpackb
-
-from bluesky_nats.nats_client import NATSClientConfig
 
 
 if TYPE_CHECKING:
-    from nats.js import JetStreamContext
+    from nats.js.client import JetStreamContext
 
 
 class NATSDispatcher(Dispatcher):
     def __init__(
         self,
         subject: str,
-        client_config: NATSClientConfig | None = None,
+        servers: str | list[str] = "nats://localhost:4222",
         stream_name: str | None = "bluesky",
         loop: asyncio.AbstractEventLoop | None = None,
         deserializer: Callable = unpackb,
+        **connect_options: Any,
     ):
         self._subject = subject
         self._stream_name = stream_name
-
-        self._client_config = client_config if client_config is not None else NATSClientConfig()
-
-        self._consumer_config = ConsumerConfig(
-            description="Bluesky Dispatcher for NATS", deliver_policy=DeliverPolicy.NEW
-        )
+        self._servers = servers if isinstance(servers, list) else [servers]
+        self._connect_options = connect_options
 
         self._deserializer = deserializer
         self.loop = loop or asyncio.get_event_loop()
-        self._nc = NATS()
-        self._js: JetStreamContext
-        self._subscription: JetStreamContext.PushSubscription
+        self._nc: Client | None = None
+        self._js: JetStreamContext | None = None
+        self._subscription = None
         self._task = None
         self.closed = False
 
@@ -62,15 +54,22 @@ class NATSDispatcher(Dispatcher):
         self._task = self.loop.create_task(self._poll())
 
     async def connect(self) -> None:
-        await self._nc.connect(**asdict(self._client_config))
+        self._nc = Client()
+        await self._nc.connect(servers=self._servers, **self._connect_options)
         self._js = self._nc.jetstream()
 
     async def _subscribe(self) -> None:
+        if self._js is None:
+            msg = "Not connected; call connect() first"
+            raise RuntimeError(msg)
         self._subscription = await self._js.subscribe(
-            subject=self._subject, stream=self._stream_name, ordered_consumer=True, config=self._consumer_config
+            subject=self._subject, stream=self._stream_name, ordered_consumer=True
         )
 
     async def _poll(self) -> None:
+        if self._subscription is None:
+            msg = "Not subscribed; call _subscribe() first"
+            raise RuntimeError(msg)
         while True:
             try:
                 msg = await self._subscription.next_msg()
@@ -84,7 +83,7 @@ class NATSDispatcher(Dispatcher):
                     print(f"Error processing message: {e}")
             except asyncio.CancelledError:
                 break
-            except NATS_TimeoutError:
+            except TimeoutError:
                 continue
             except Exception as e:  # noqa: BLE001
                 print(f"Unexpected error: {e!s}")
@@ -102,7 +101,7 @@ class NATSDispatcher(Dispatcher):
             setup_task = self.loop.create_task(self._setup())
             self.loop.run_until_complete(setup_task)
             self.loop.run_forever()
-        except BaseException as exception:
+        except Exception as exception:
             print(f"Unexpected error in START: {exception}")
             self.loop.run_until_complete(self.stop())
             raise
