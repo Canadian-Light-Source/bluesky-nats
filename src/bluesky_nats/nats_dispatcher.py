@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from bluesky.run_engine import Dispatcher
 from event_model import DocumentNames
 from nats.aio.client import Client
+from nats.js.api import ConsumerConfig
 from ormsgpack import unpackb
 
 
@@ -19,6 +20,7 @@ class NATSDispatcher(Dispatcher):
         subject: str,
         servers: str | list[str] = "nats://localhost:4222",
         stream_name: str | None = "bluesky",
+        consumer_config: ConsumerConfig | None = None,
         loop: asyncio.AbstractEventLoop | None = None,
         deserializer: Callable = unpackb,
         **connect_options: Any,
@@ -27,6 +29,7 @@ class NATSDispatcher(Dispatcher):
         self._stream_name = stream_name
         self._servers = servers if isinstance(servers, list) else [servers]
         self._connect_options = connect_options
+        self._consumer_config = consumer_config or ConsumerConfig()
 
         self._deserializer = deserializer
         self.loop = loop or asyncio.get_event_loop()
@@ -64,7 +67,7 @@ class NATSDispatcher(Dispatcher):
             msg = "Not connected; call connect() first"
             raise RuntimeError(msg)
         self._subscription = await self._js.subscribe(
-            subject=self._subject, stream=self._stream_name, ordered_consumer=True
+            subject=self._subject, stream=self._stream_name, config=self._consumer_config, ordered_consumer=True
         )
 
     async def _poll(self) -> None:
