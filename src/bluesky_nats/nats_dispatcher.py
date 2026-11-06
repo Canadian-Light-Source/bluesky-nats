@@ -29,7 +29,7 @@ class NATSDispatcher(Dispatcher):
         self._stream_name = stream_name
         self._servers = servers if isinstance(servers, list) else [servers]
         self._connect_options = connect_options
-        self._consumer_config = consumer_config or ConsumerConfig()
+        self._consumer_config = consumer_config
 
         self._deserializer = deserializer
         self.loop = loop or asyncio.get_event_loop()
@@ -67,7 +67,10 @@ class NATSDispatcher(Dispatcher):
             msg = "Not connected; call connect() first"
             raise RuntimeError(msg)
         self._subscription = await self._js.subscribe(
-            subject=self._subject, stream=self._stream_name, config=self._consumer_config, ordered_consumer=True
+            subject=self._subject,
+            stream=self._stream_name,
+            config=self._consumer_config,
+            ordered_consumer=self._consumer_config is None,
         )
 
     async def _poll(self) -> None:
