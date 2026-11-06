@@ -34,6 +34,7 @@ class NATSDispatcher(Dispatcher):
         self._js: JetStreamContext | None = None
         self._subscription = None
         self._task = None
+        self._stop_loop_on_shutdown = False
         self.closed = False
 
         super().__init__()
@@ -98,6 +99,7 @@ class NATSDispatcher(Dispatcher):
             msg = f"This NATSDispatcher has already been started and interrupted. Create a fresh instance with {self!r}"
             raise RuntimeError(msg)
         try:
+            self._stop_loop_on_shutdown = True
             setup_task = self.loop.create_task(self._setup())
             self.loop.run_until_complete(setup_task)
             self.loop.run_forever()
@@ -140,7 +142,7 @@ class NATSDispatcher(Dispatcher):
                 print(f"Error closing NATS connection: {e}")
 
         self.closed = True
-        if self.loop.is_running():
+        if self._stop_loop_on_shutdown and self.loop.is_running():
             self.loop.stop()
 
 
