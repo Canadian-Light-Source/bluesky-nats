@@ -1,4 +1,5 @@
 import asyncio
+import sys
 
 import pytest
 from event_model import DocumentNames
@@ -13,6 +14,8 @@ from bluesky_nats.nats_dispatcher import NATSDispatcher
 @pytest.fixture(scope="module")
 def nats_server():
     """Start a JetStream-enabled NATS server for integration tests."""
+    if sys.platform in {"darwin", "win32"}:
+        pytest.xfail("testcontainers integration is unsupported on macOS and Windows")
     with NatsContainer(jetstream=True) as container:
         yield container
 
